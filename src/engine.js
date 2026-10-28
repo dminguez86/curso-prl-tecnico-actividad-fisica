@@ -1,11 +1,14 @@
 const KEY="curso-prl-taf-v1";
-let st={};try{st=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){st={}}
-st.done=st.done||{};st.scores=st.scores||{};
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+const UK="curso-prl-taf-users",SK="curso-prl-taf-session",TK="curso-prl-taf-theme";
+const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let U=null,st={done:{},scores:{}};
+const users=()=>LS.get(UK,{});
+const save=()=>{if(U)LS.set(KEY+":"+U.dni,st)};
 const $=s=>document.querySelector(s),main=$("#main"),nav=$("#nav");
-const theme=t=>{document.documentElement.dataset.theme=t;$("#theme").textContent=t==="dark"?"☀️":"🌙";st.theme=t;save()};
-theme(st.theme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"));
-$("#theme").onclick=()=>theme(st.theme==="dark"?"light":"dark");
+let TH;const theme=t=>{TH=t;document.documentElement.dataset.theme=t;$("#theme").textContent=t==="dark"?"☀️":"🌙";LS.set(TK,t)};
+theme(LS.get(TK,null)||LS.get(KEY,{}).theme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"));
+$("#theme").onclick=()=>theme(TH==="dark"?"light":"dark");
 $("#menu").onclick=()=>nav.classList.toggle("open");
 const FINALN=15,EXAMN=25;
 const mins=m=>MODS[m].L.reduce((a,l)=>a+l.min,0)+MODS[m].fmin;
@@ -15,12 +18,12 @@ const keys=m=>MODS[m].L.map((_,i)=>m+"-"+i).concat(m+"-final");
 const modPct=m=>{const ks=keys(m);return Math.round(ks.filter(k=>st.done[k]).length/ks.length*100)};
 const allKeys=()=>MODS.flatMap((_,m)=>keys(m)).concat("exam");
 function progress(){const ks=allKeys(),p=Math.round(ks.filter(k=>st.done[k]).length/ks.length*100);$("#bar").style.width=p+"%";$("#pct").textContent=p+"%";}
-function renderNav(v){nav.innerHTML=`<a data-v="home" class="${v.p==="home"?"on":""}">🏠 Portada</a>`+MODS.map((M,m)=>`<details class="ng" ${v.m===m||v.p==="home"?"open":""}><summary>Módulo ${m+1} <small>· ${modPct(m)}% · ${hm(mins(m))}</small></summary>`+M.L.map((l,i)=>`<a data-v="${m}-${i}" class="${v.m===m&&v.p===i?"on":""}">${l.ico} ${m+1}.${i+1} ${l.t}<span class="ck">${st.done[m+"-"+i]?"✅":""}</span></a>`).join("")+`<a data-v="${m}-final" class="${v.m===m&&v.p==="final"?"on":""}">🏁 Test final del módulo<span class="ck">${st.done[m+"-final"]?"✅":""}</span></a></details>`).join("")+`<a data-v="exam" class="${v.p==="exam"?"on":""}">🎓 Examen final del curso<span class="ck">${st.exam&&st.exam.pass?"✅":""}</span></a><a data-v="cert" class="${v.p==="cert"?"on":""}">📜 Certificado</a><p style="font-size:.8rem;color:var(--mut);padding:8px">Tu progreso se guarda en este navegador. <button id="reset" style="font-size:.8rem">Reiniciar</button></p>`;
+function renderNav(v){nav.innerHTML=`<a data-v="home" class="${v.p==="home"?"on":""}">🏠 Portada</a>`+MODS.map((M,m)=>`<details class="ng" ${v.m===m||v.p==="home"?"open":""}><summary>Módulo ${m+1} <small>· ${modPct(m)}% · ${hm(mins(m))}</small></summary>`+M.L.map((l,i)=>`<a data-v="${m}-${i}" class="${v.m===m&&v.p===i?"on":""}">${l.ico} ${m+1}.${i+1} ${l.t}<span class="ck">${st.done[m+"-"+i]?"✅":""}</span></a>`).join("")+`<a data-v="${m}-final" class="${v.m===m&&v.p==="final"?"on":""}">🏁 Test final del módulo<span class="ck">${st.done[m+"-final"]?"✅":""}</span></a></details>`).join("")+`<a data-v="exam" class="${v.p==="exam"?"on":""}">🎓 Examen final del curso<span class="ck">${st.exam&&st.exam.pass?"✅":""}</span></a><a data-v="cert" class="${v.p==="cert"?"on":""}">📜 Certificado</a><a data-v="account" class="${v.p==="account"?"on":""}">👤 Mi cuenta y registro</a><p style="font-size:.8rem;color:var(--mut);padding:8px">Tu progreso se guarda en este navegador. <button id="reset" style="font-size:.8rem">Reiniciar</button></p>`;
 nav.querySelectorAll("a").forEach(a=>a.onclick=()=>go(parse(a.dataset.v)));
-$("#reset").onclick=()=>{if(confirm("¿Borrar todo el progreso?")){st={theme:st.theme,done:{},scores:{},name:st.name};save();go({p:"home"})}};}
-function parse(s){if(!s||s==="home")return{p:"home"};if(s==="exam"||s==="cert")return{p:s};const[m,p]=s.split("-");return{m:+m,p:p==="final"?"final":+p}}
-function go(v){nav.classList.remove("open");st.last=(v.p==="home"||v.p==="exam"||v.p==="cert")?v.p:v.m+"-"+v.p;save();renderNav(v);progress();
-if(v.p==="home")home();else if(v.p==="exam")exam();else if(v.p==="cert")cert();else if(v.p==="final")finalTest(v.m);else lesson(v.m,v.p);main.firstElementChild.classList.add("view");scrollTo({top:0,behavior:"smooth"});}
+$("#reset").onclick=()=>{if(confirm("¿Borrar todo el progreso?")){st={done:{},scores:{}};save();go({p:"home"})}};}
+function parse(s){if(!s||s==="home")return{p:"home"};if(s==="exam"||s==="cert"||s==="account")return{p:s};const[m,p]=s.split("-");return{m:+m,p:p==="final"?"final":+p}}
+function go(v){if(!U){auth();return}nav.classList.remove("open");st.last=(v.p==="home"||v.p==="exam"||v.p==="cert"||v.p==="account")?v.p:v.m+"-"+v.p;save();renderNav(v);progress();
+if(v.p==="home")home();else if(v.p==="exam")exam();else if(v.p==="cert")cert();else if(v.p==="account")account();else if(v.p==="final")finalTest(v.m);else lesson(v.m,v.p);main.firstElementChild.classList.add("view");scrollTo({top:0,behavior:"smooth"});}
 function nextStep(){for(let m=0;m<MODS.length;m++){const i=MODS[m].L.findIndex((_,j)=>!st.done[m+"-"+j]);if(i>=0)return m+"-"+i;if(!st.done[m+"-final"])return m+"-final"}return "exam"}
 const RACK=`<svg class="gym" viewBox="0 0 320 270" aria-hidden="true">
 <rect x="0" y="246" width="320" height="6" fill="#ffffff40"/>
@@ -74,12 +77,58 @@ bindQuiz(qs,"ex",need,ok=>{const pass=ok>=need,d=new Date().toISOString().slice(
 $("#prev").onclick=()=>go({p:"home"});$("#next").onclick=()=>go({p:"cert"});}
 function cert(){const E=st.exam,ok=E&&E.pass,mods=MODS.filter((_,m)=>modPct(m)===100).length,f=d=>d?d.split("-").reverse().join("/"):"";
 main.innerHTML=`<div>${ok?"":`<div class="card alert">Para emitir el certificado debes <b>superar el examen final</b> (70 %). Se recomienda completar antes todas las lecciones. <button class="btn" id="toex">Ir al examen ▶</button></div>`}
-<div class="card noprint"><label for="nm"><b>Nombre y apellidos para el certificado</b></label><br><input id="nm" value="${(st.name||"").replace(/"/g,"&quot;")}" maxlength="80" style="font:inherit;width:100%;max-width:460px;padding:8px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--txt);margin-top:6px"> <button class="btn" id="pr" ${ok?"":"disabled"}>🖨️ Imprimir / guardar PDF</button></div>
-<div class="cert"><img src="${LOGO}" alt="PREVIJOB" style="height:56px"><h2>Certificado de formación en prevención de riesgos laborales</h2><p>Se certifica que</p><p class="cn" id="cn">${st.name||"…"}</p><p>ha realizado el curso <b>«PRL para el puesto de Técnico/a de actividades físicas y entrenamiento»</b>, formación teórica y práctica específica del puesto en cumplimiento del <b>artículo 19 de la Ley 31/1995</b> de Prevención de Riesgos Laborales, basada en la evaluación de riesgos del centro de trabajo.</p>
+<div class="card noprint">Los datos del certificado proceden de tu alta y no pueden editarse aquí. <button class="btn" id="pr" ${ok?"":"disabled"}>🖨️ Imprimir / guardar PDF</button></div>
+<div class="cert"><img src="${LOGO}" alt="PREVIJOB" style="height:56px"><h2>Certificado de formación en prevención de riesgos laborales</h2><p>Se certifica que</p><p class="cn" id="cn">${esc(U.name)}</p><p>con DNI/NIE <b id="cdni">${esc(U.dni)}</b>, de la empresa <b id="cemp">${esc(U.company)}</b>, ha realizado el curso <b>«PRL para el puesto de Técnico/a de actividades físicas y entrenamiento»</b>, formación teórica y práctica específica del puesto en cumplimiento del <b>artículo 19 de la Ley 31/1995</b> de Prevención de Riesgos Laborales, basada en la evaluación de riesgos del centro de trabajo.</p>
 <div class="tbl"><table><tr><th>Duración</th><th>Módulos completados</th><th>Examen final</th><th>Fecha</th></tr><tr><td>${hm(TOT())}</td><td>${mods} de ${MODS.length}</td><td>${E?E.ok+"/"+E.n+" ("+Math.round(E.ok/E.n*100)+" %) · "+(ok?"APTO":"NO APTO"):"Pendiente"}</td><td>${ok?f(E.date):"—"}</td></tr></table></div>
 <p style="font-size:.85rem;color:var(--mut)">Contenidos: ${MODS.map((M,m)=>(m+1)+". "+M.t).join(" · ")}.</p><div class="firmas"><div>Firma de la persona trabajadora</div><div>Firma y sello de la empresa</div></div></div></div>`;
-const nm=$("#nm");nm.oninput=()=>{st.name=nm.value.trim();$("#cn").textContent=st.name||"…";save()};
-$("#pr").onclick=()=>{if(!st.name){alert("Escribe tu nombre y apellidos.");nm.focus();return}print()};if($("#toex"))$("#toex").onclick=()=>go({p:"exam"});}
+$("#pr").onclick=()=>print();if($("#toex"))$("#toex").onclick=()=>go({p:"exam"});}
 function bindMedia(){main.querySelectorAll("img.zoom").forEach(im=>im.onclick=()=>{const b=document.createElement("div");b.className="lb";b.innerHTML=`<img src="${im.src}" alt="${im.alt}"><button aria-label="Cerrar">✕</button>`;b.onclick=()=>b.remove();document.body.append(b)});}
 addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".lb").forEach(b=>b.remove())});
-go(parse(st.last&&st.last!=="home"?"home":"home"));
+
+const LET="TRWAGMYFPDXBNJZSQVHLCKE";
+function normDni(s){return String(s||"").toUpperCase().replace(/[\s.-]/g,"")}
+function validDni(s){const d=normDni(s),m=d.match(/^([XYZ]|\d)(\d{7})([A-Z])$/);if(!m)return false;const n=+(("XYZ".indexOf(m[1])>=0?"XYZ".indexOf(m[1]):m[1])+m[2]);return LET[n%23]===m[3]}
+const validMail=s=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
+async function hash(dni,pin){const b=new TextEncoder().encode("prl-taf|"+dni+"|"+pin);if(crypto.subtle){const h=await crypto.subtle.digest("SHA-256",b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,"0")).join("")}let x=5381;for(const c of b)x=(x*33^c)>>>0;return "d"+x}
+function setHeader(){$("#uname").textContent=U?U.name:"";$("#ubtn").hidden=!U;$("#menu").hidden=!U;document.body.classList.toggle("noauth",!U)}
+function login(dni){const us=users();U=us[dni];LS.set(SK,dni);st=LS.get(KEY+":"+dni,null)||{};st.done=st.done||{};st.scores=st.scores||{};setHeader();go(parse(st.last||"home"))}
+function logout(){U=null;st={done:{},scores:{}};LS.del(SK);setHeader();auth()}
+function auth(mode,pre){nav.innerHTML="";const us=users(),list=Object.values(us);mode=mode||(list.length?"login":"signup");
+main.innerHTML=`<div class="view auth"><section class="hx ah"><div><img class="logo-x" src="${LOGO}" alt="PREVIJOB · Servicio de Prevención"><br><span class="eyb">Formación PRL · Art. 19 Ley 31/1995</span><h2>Técnico/a de actividades físicas y entrenamiento: <em>entra al curso</em></h2><p class="sub">Date de alta con tus datos para que tu progreso, tus notas y tu certificado queden a tu nombre. Los datos se guardan solo en este navegador.</p></div>${RACK}</section>
+<div class="tabs" role="tablist"><button role="tab" id="tsign" aria-selected="${mode==="signup"}" class="${mode==="signup"?"btn":""}">✍️ Darme de alta</button><button role="tab" id="tlog" aria-selected="${mode==="login"}" class="${mode==="login"?"btn":""}">🔑 Acceder${list.length?" ("+list.length+")":""}</button></div>
+${mode==="signup"?`<form class="card af" id="fs" novalidate><h3>Alta de la persona trabajadora</h3>
+<label>Nombre y apellidos *<input id="fn" autocomplete="name" maxlength="80" required></label>
+<label>DNI / NIE *<input id="fd" maxlength="12" placeholder="12345678Z o X1234567L" autocapitalize="characters" required></label>
+<label>Empresa *<input id="fe" autocomplete="organization" maxlength="80" required></label>
+<label>Correo electrónico *<input id="fm" type="email" autocomplete="email" maxlength="100" required></label>
+<label>Contraseña o PIN (opcional)<input id="fp" type="password" autocomplete="new-password" maxlength="40" placeholder="Protege tu acceso en este navegador"></label>
+<div class="note rgpd"><b>Protección de datos.</b> Tus datos (nombre, DNI/NIE, empresa y correo) se usarán únicamente para identificarte en este curso, registrar tu progreso y emitir tu certificado de formación en prevención de riesgos laborales. Se almacenan solo en este navegador y no se envían a ningún servidor. Puedes descargarlos o eliminarlos en cualquier momento desde «Mi cuenta». El responsable del tratamiento es tu empresa, ante la que puedes ejercer tus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad.</div>
+<label class="chk"><input type="checkbox" id="fc"> He leído y acepto la información de protección de datos *</label>
+<p class="err" id="ferr" role="alert"></p><button class="go" type="submit">Darme de alta y empezar ▶</button></form>`:
+`<form class="card af" id="fl" novalidate><h3>Acceder con mi usuario</h3>${list.length?`<label>Usuario<select id="ls">${list.map(u=>`<option value="${esc(u.dni)}" ${pre===u.dni?"selected":""}>${esc(u.name)} · ${esc(u.dni.slice(0,-4).replace(/./g,"•")+u.dni.slice(-4))}</option>`).join("")}</select></label>`:"<p>No hay usuarios en este navegador.</p>"}
+<label>DNI / NIE *<input id="ld" maxlength="12" autocapitalize="characters" required></label>
+<label>Contraseña o PIN<input id="lp" type="password" autocomplete="current-password" maxlength="40" placeholder="Solo si la definiste en el alta"></label>
+<p class="err" id="lerr" role="alert"></p><button class="go" type="submit">Entrar ▶</button></form>`}</div>`;
+$("#tsign").onclick=()=>auth("signup");$("#tlog").onclick=()=>auth("login");
+if(mode==="signup")$("#fs").onsubmit=async ev=>{ev.preventDefault();const n=$("#fn").value.trim().replace(/\s+/g," "),d=normDni($("#fd").value),c=$("#fe").value.trim(),m=$("#fm").value.trim(),p=$("#fp").value,er=$("#ferr");
+const bad=[];if(n.length<5||!/\s/.test(n))bad.push("nombre y apellidos");if(!validDni(d))bad.push("DNI/NIE válido (comprueba la letra)");if(c.length<2)bad.push("empresa");if(!validMail(m))bad.push("correo válido");if(!$("#fc").checked)bad.push("aceptar la información de protección de datos");
+if(bad.length){er.textContent="Revisa: "+bad.join(", ")+".";return}const us=users();if(us[d]){er.textContent="Ya existe un usuario con este DNI/NIE en este navegador. Usa «Acceder».";return}
+us[d]={name:n,dni:d,company:c,email:m,pin:p?await hash(d,p):null,consent:new Date().toISOString(),created:new Date().toISOString()};LS.set(UK,us);
+const anon=LS.get(KEY,null);if(anon&&(Object.keys(anon.done||{}).length||Object.keys(anon.scores||{}).length||anon.exam)&&!LS.get(KEY+":"+d,null)){delete anon.theme;delete anon.name;anon.migrated=new Date().toISOString();LS.set(KEY+":"+d,anon);LS.del(KEY)}
+login(d)};
+else{const ls=$("#ls");if(ls)$("#ld").value="";$("#fl").onsubmit=async ev=>{ev.preventDefault();const d=normDni($("#ld").value),us=users(),u=us[d],er=$("#lerr");
+if(!u||(ls&&ls.value!==d)){er.textContent="El DNI/NIE no coincide con el usuario seleccionado o no está dado de alta.";return}
+if(u.pin&&u.pin!==await hash(d,$("#lp").value)){er.textContent="Contraseña o PIN incorrecto.";return}login(d)}}}
+function account(){const us=users(),others=Object.values(us).filter(u=>u.dni!==U.dni);
+main.innerHTML=`<div><div class="hero"><h2>👤 Mi cuenta</h2><p>${esc(U.name)} · ${esc(U.dni)} · ${esc(U.company)} · ${esc(U.email)}</p></div>
+<div class="card"><h3>Mi registro</h3><p>Descarga tus datos de alta, tu progreso por lección y tus notas.</p><button class="btn" id="dl">⬇️ Descargar mi registro (JSON)</button></div>
+<div class="card"><h3>Cambiar de usuario</h3>${others.length?`<div class="grid">${others.map(u=>`<button class="sw" data-d="${esc(u.dni)}">👤 ${esc(u.name)}</button>`).join("")}</div>`:"<p>No hay otros usuarios en este navegador.</p>"}<p><button id="nu">➕ Dar de alta otro usuario</button> <button id="lo">🚪 Cerrar sesión</button></p></div>
+<div class="card alert"><b>Eliminar mis datos de este navegador.</b> Borra tu alta, tu progreso y tus notas. <button id="del">Eliminar</button></div></div>`;
+$("#dl").onclick=download;$("#lo").onclick=logout;$("#nu").onclick=()=>{logout();auth("signup")};
+main.querySelectorAll(".sw").forEach(b=>b.onclick=()=>{logout();auth("login",b.dataset.d)});
+$("#del").onclick=()=>{if(confirm("¿Eliminar definitivamente tu usuario y tu progreso de este navegador?")){const us=users();delete us[U.dni];LS.set(UK,us);LS.del(KEY+":"+U.dni);logout()}}}
+function download(){const det=MODS.map((M,m)=>({modulo:m+1,titulo:M.t,porcentaje:modPct(m),lecciones:M.L.map((l,i)=>({leccion:(m+1)+"."+(i+1),titulo:l.t,minutos:l.min,superada:!!st.done[m+"-"+i],nota:st.scores[m+"-"+i]??null,preguntas:l.q.length})),test_modulo:{superado:!!st.done[m+"-final"],nota:st.scores[m+"-final"]??null,preguntas:FINALN}}));
+const {pin,...datos}=U,r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...datos,pin_definido:!!pin},duracion_horas:+(TOT()/60).toFixed(2),progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
+const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(r,null,2)],{type:"application/json"}));a.download="registro-prl-"+U.dni+".json";document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+$("#ubtn").onclick=()=>go({p:"account"});
+{const d=LS.get(SK,null);if(d&&users()[d])login(d);else{setHeader();auth()}}
