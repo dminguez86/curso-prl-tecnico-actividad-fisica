@@ -21,11 +21,13 @@ const pool = new Pool({
 });
 
 // Estructura del curso (debe coincidir con src/m1..m7.js)
-const LESSONS = [4, 6, 6, 4, 3, 4, 4];
-const FINALN = 15, EXAMN = 25;
+const META = require("./course-meta.json"); // generado por src/build.py
+const LESSONS = META.lessons;
+const FINALN = 15, EXAMN = META.examN;
 const KEYS = LESSONS.flatMap((n, m) => [...Array(n).keys()].map(i => `${m}-${i}`).concat(`${m}-final`)).concat("exam");
 const KEYSET = new Set(KEYS);
-const maxScore = k => k === "exam" ? EXAMN : k.endsWith("-final") ? FINALN : 10;
+const maxScore = k => { if (k === "exam") return EXAMN; const [m, p] = k.split("-"); return p === "final" ? META.finalN[+m] : META.lessonQ[+m][+p]; };
+const needOf = k => Math.ceil(maxScore(k) * 0.7); // mismo umbral que el curso (70 %)
 
 async function init() {
   await pool.query(`CREATE TABLE IF NOT EXISTS workers(
@@ -66,18 +68,19 @@ const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !i
 function sanitize(d) {
   const o = { done: {}, scores: {}, exam: null, last: "home" };
   if (!d || typeof d !== "object") return o;
-  if (d.done && typeof d.done === "object") for (const k of Object.keys(d.done)) if (KEYSET.has(k) && d.done[k]) o.done[k] = 1;
   if (d.scores && typeof d.scores === "object") for (const k of Object.keys(d.scores)) {
     const v = d.scores[k];
     if (KEYSET.has(k) && k !== "exam" && Number.isInteger(v) && v >= 0 && v <= maxScore(k)) o.scores[k] = v;
   }
+  // una lección/test solo cuenta como aprobado si su nota alcanza el umbral
+  if (d.done && typeof d.done === "object") for (const k of Object.keys(d.done)) if (KEYSET.has(k) && k !== "exam" && d.done[k] && (o.scores[k] ?? -1) >= needOf(k)) o.done[k] = 1;
   const e = d.exam;
   if (e && Number.isInteger(e.ok) && Number.isInteger(e.n) && e.n > 0 && e.n <= EXAMN && e.ok >= 0 && e.ok <= e.n) {
     o.exam = { ok: e.ok, n: e.n, pass: e.ok >= Math.ceil(e.n * 0.7), date: isDate(e.date) ? e.date : null };
     if (o.exam.pass && !o.exam.date) o.exam.date = new Date().toISOString().slice(0, 10);
   }
   if (!o.exam || !o.exam.pass) delete o.done.exam;
-  if (typeof d.last === "string" && (d.last === "home" || ["exam", "cert", "account"].includes(d.last) || KEYSET.has(d.last))) o.last = d.last;
+  if (typeof d.last === "string" && (d.last === "home" || ["exam", "account"].includes(d.last) || KEYSET.has(d.last))) o.last = d.last;
   return o;
 }
 function merge(a, b) { // a = servidor, b = cliente
@@ -95,6 +98,21 @@ function merge(a, b) { // a = servidor, b = cliente
   return o;
 }
 const DUMMY = bcrypt.hashSync("x-no-user-x", 10);
+// Avance secuencial: descarta notas y aprobados de hitos cuyo anterior no está aprobado
+function enforce(d) {
+  const out = { done: {}, scores: {}, exam: null, last: d.last }, dropped = [];
+  for (let i = 0; i < KEYS.length; i++) {
+    const k = KEYS[i], open = i === 0 || !!out.done[KEYS[i - 1]];
+    if (k === "exam") {
+      if (d.exam) { if (open) { out.exam = d.exam; if (d.exam.pass) out.done.exam = 1; } else dropped.push("exam"); }
+      continue;
+    }
+    if (d.scores[k] != null || d.done[k]) {
+      if (open) { if (d.scores[k] != null) out.scores[k] = d.scores[k]; if (d.done[k]) out.done[k] = 1; } else dropped.push(k);
+    }
+  }
+  return { data: out, dropped };
+}
 const pctOf = d => Math.round(KEYS.filter(k => d.done[k]).length / KEYS.length * 100);
 
 // ---------- tokens firmados (HMAC) ----------
@@ -138,7 +156,7 @@ app.use("/api", apiLimiter);
 const userOut = r => ({ name: r.name, dni: r.dni, company: r.company, email: r.email, created: r.created_at, consent: r.consent_at });
 async function loadProgress(dni) {
   const r = await pool.query("SELECT data FROM progress WHERE dni=$1", [dni]);
-  return r.rows[0] ? sanitize(r.rows[0].data) : sanitize({});
+  return enforce(sanitize(r.rows[0] ? r.rows[0].data : {})).data;
 }
 async function storeProgress(dni, data) {
   const e = data.exam;
@@ -164,7 +182,7 @@ app.post("/api/register", registerLimiter, wrap(async (req, res) => {
   const hash = await bcrypt.hash(b.pin, 10);
   const r = await pool.query(`INSERT INTO workers(dni,name,company,email,pin_hash,consent_at,last_login) VALUES($1,$2,$3,$4,$5,now(),now()) ON CONFLICT(dni) DO NOTHING RETURNING *`, [dni, name, company, email, hash]);
   if (!r.rows[0]) return res.status(409).json({ error: "Ya existe una persona dada de alta con este DNI/NIE. Usa «Acceder»." });
-  const data = merge(sanitize({}), sanitize(b.progress));
+  const data = enforce(merge(sanitize({}), sanitize(b.progress))).data;
   await storeProgress(dni, data);
   res.status(201).json({ token: sign({ t: "u", dni }, 24 * 30), user: userOut(r.rows[0]), progress: data });
 }));
@@ -192,12 +210,14 @@ app.put("/api/progress", needUser, wrap(async (req, res) => {
     const r = await client.query("SELECT data FROM progress WHERE dni=$1 FOR UPDATE", [req.dni]);
     const w = await client.query("SELECT 1 FROM workers WHERE dni=$1", [req.dni]);
     if (!w.rows[0]) { await client.query("ROLLBACK"); return res.status(401).json({ error: "Usuario no encontrado." }); }
-    const data = merge(sanitize(r.rows[0] ? r.rows[0].data : {}), sanitize(req.body && req.body.progress));
+    const prev = enforce(sanitize(r.rows[0] ? r.rows[0].data : {})).data;
+    const { data, dropped } = enforce(merge(prev, sanitize(req.body && req.body.progress)));
     const e = data.exam;
     await client.query(`INSERT INTO progress(dni,data,pct,exam_ok,exam_n,passed,passed_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now())
       ON CONFLICT(dni) DO UPDATE SET data=$2,pct=$3,exam_ok=$4,exam_n=$5,passed=$6,passed_at=$7,updated_at=now()`,
       [req.dni, data, pctOf(data), e ? e.ok : null, e ? e.n : null, !!(e && e.pass), e && e.pass ? e.date : null]);
     await client.query("COMMIT");
+    if (dropped.length) return res.status(409).json({ error: "Avance no permitido: hay que aprobar antes lo anterior.", rejected: dropped, progress: data });
     res.json({ progress: data });
   } catch (e) { await client.query("ROLLBACK").catch(() => {}); throw e; } finally { client.release(); }
 }));
@@ -234,6 +254,13 @@ app.get("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const r = await pool.query(LIST_SQL + " WHERE w.dni=$1", [normDni(req.params.dni)]);
   if (!r.rows[0]) return res.status(404).json({ error: "No encontrado" });
   res.json({ worker: rowOut(r.rows[0]) });
+}));
+// Trabajadores que han terminado el curso (examen final aprobado)
+app.get("/api/admin/finalizados", needAdmin, wrap(async (req, res) => {
+  const r = await pool.query(`SELECT w.dni,w.name,w.company,p.exam_ok,p.exam_n,to_char(p.passed_at,'YYYY-MM-DD') passed_at
+    FROM workers w JOIN progress p USING(dni) WHERE p.passed ORDER BY p.passed_at, w.name`);
+  res.json({ finalizados: r.rows.map(x => ({ id: x.dni, nombre: x.name, empresa: x.company, nota: `${x.exam_ok}/${x.exam_n}`,
+    nota_pct: Math.round(x.exam_ok / x.exam_n * 100), fecha_finalizacion: x.passed_at })) });
 }));
 app.delete("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const r = await pool.query("DELETE FROM workers WHERE dni=$1", [normDni(req.params.dni)]);

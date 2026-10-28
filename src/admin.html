@@ -17,10 +17,6 @@ input,select{font:inherit;padding:9px 11px;border:1px solid var(--bd);border-rad
 .ok{background:#e3f6ea;color:#0f7a35;font-weight:800;border-radius:7px;padding:2px 8px}.no{background:#fde8e8;color:var(--ko);font-weight:800;border-radius:7px;padding:2px 8px}
 .err{color:var(--ko);font-weight:600}.mut{color:var(--mut)}
 #login{max-width:420px;margin:40px auto}#login label{display:block;margin:10px 0}#login input{width:100%}
-.cert{background:#fff;color:#1d2b36;border:3px double #0277ab;border-radius:16px;padding:28px;text-align:center;margin:14px 0}.cert h2{color:#06476b}.cert .cn{font-size:1.6rem;font-weight:800;border-bottom:2px solid #16B14C;display:inline-block;min-width:60%;padding:0 10px}
-.cert table{margin:10px auto;width:auto}.cert td,.cert th{border:1px solid #b9cfdc;white-space:normal;text-align:center}
-.firmas{display:flex;justify-content:space-around;gap:20px;margin-top:50px;flex-wrap:wrap}.firmas div{border-top:1px solid #4a5a68;padding-top:6px;min-width:200px;font-size:.85rem}
-#cv{display:none}body.printing>*:not(#cv){display:none!important}body.printing #cv{display:block}
 @media print{header,.noprint{display:none!important}body{background:#fff}main{padding:0}}
 [hidden]{display:none!important}
 </style></head><body>
@@ -33,7 +29,6 @@ input,select{font:inherit;padding:9px 11px;border:1px solid var(--bd);border-rad
 <div class="card"><div class="tw"><table><thead><tr><th data-s="name">Nombre</th><th data-s="dni">DNI/NIE</th><th data-s="company">Empresa</th><th data-s="pct">Progreso</th><th>Tests módulo (/15)</th><th data-s="examOk">Examen</th><th data-s="passed">Resultado</th><th data-s="passedAt">Fecha</th><th class="noprint">Acciones</th></tr></thead><tbody id="tb"></tbody></table></div><p class="mut" id="cnt"></p></div>
 </section>
 </main>
-<div id="cv"></div>
 <script>
 const META=__META__;
 const API=location.hostname==="curso-prl-tecnico-actividad-fisica.onrender.com"?"https://curso-prl-taf-api.onrender.com":"";
@@ -50,17 +45,11 @@ async function load(){$("#cnt").textContent="Cargando…";const r=await api("/ap
 function filtered(){const q=$("#q").value.trim().toLowerCase(),e=$("#emp").value,rs=$("#res").value;return W.filter(w=>(!e||w.company===e)&&(rs===""||String(+w.passed)===rs)&&(!q||(w.name+" "+w.dni+" "+w.email+" "+w.company).toLowerCase().includes(q))).sort((a,b)=>{const x=a[sortK]??"",y=b[sortK]??"";return (typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),"es"))*sortD})}
 function render(){const L=filtered(),ap=L.filter(w=>w.passed).length,avg=L.length?Math.round(L.reduce((a,w)=>a+w.pct,0)/L.length):0;
 $("#kpi").innerHTML=`<div><b>${L.length}</b><span>personas (filtro actual)</span></div><div><b>${ap}</b><span>APTO</span></div><div><b>${L.length-ap}</b><span>NO APTO / pendientes</span></div><div><b>${avg}%</b><span>progreso medio</span></div>`;
-$("#tb").innerHTML=L.map(w=>`<tr><td><b>${esc(w.name)}</b><br><small class="mut">${esc(w.email)}</small></td><td>${esc(w.dni)}</td><td>${esc(w.company)}</td><td><span class="bar"><i style="width:${w.pct}%"></i></span>${w.pct}%</td><td><small>${w.modules.map((m,i)=>`M${i+1}: ${m.final??"–"}`).join(" · ")}</small></td><td>${w.examOk!=null?w.examOk+"/"+w.examN:"—"}</td><td>${w.passed?'<span class="ok">APTO</span>':'<span class="no">NO APTO</span>'}</td><td>${fd(w.passedAt)}</td><td class="noprint"><button data-c="${esc(w.dni)}" ${w.passed?"":"disabled title='Solo para personas APTAS'"}>📜 Certificado</button> <button class="del" data-d="${esc(w.dni)}">🗑️ Eliminar</button></td></tr>`).join("")||`<tr><td colspan="9" class="mut">Sin resultados.</td></tr>`;
+$("#tb").innerHTML=L.map(w=>`<tr><td><b>${esc(w.name)}</b><br><small class="mut">${esc(w.email)}</small></td><td>${esc(w.dni)}</td><td>${esc(w.company)}</td><td><span class="bar"><i style="width:${w.pct}%"></i></span>${w.pct}%</td><td><small>${w.modules.map((m,i)=>`M${i+1}: ${m.final??"–"}`).join(" · ")}</small></td><td>${w.examOk!=null?w.examOk+"/"+w.examN:"—"}</td><td>${w.passed?'<span class="ok">APTO</span>':'<span class="no">NO APTO</span>'}</td><td>${fd(w.passedAt)}</td><td class="noprint"><button class="del" data-d="${esc(w.dni)}">🗑️ Eliminar</button></td></tr>`).join("")||`<tr><td colspan="9" class="mut">Sin resultados.</td></tr>`;
 $("#cnt").textContent=`${L.length} de ${W.length} personas dadas de alta.`;
-$("#tb").querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>cert(W.find(w=>w.dni===b.dataset.c)));
 $("#tb").querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{const w=W.find(x=>x.dni===b.dataset.d);if(!confirm(`¿Eliminar definitivamente a ${w.name} (${w.dni}) y todo su progreso?`))return;const r=await api("/api/admin/workers/"+encodeURIComponent(w.dni),{method:"DELETE"});if(r.ok)load();else alert("No se pudo eliminar.")})}
 ["q","emp","res"].forEach(i=>$("#"+i).oninput=render);$("#rf").onclick=load;
 document.querySelectorAll("th[data-s]").forEach(th=>th.onclick=()=>{const k=th.dataset.s;sortD=sortK===k?-sortD:1;sortK=k;render()});
 $("#csv").onclick=async()=>{const p=new URLSearchParams({q:$("#q").value.trim(),empresa:$("#emp").value}),r=await api("/api/admin/export.csv?"+p);if(!r.ok)return alert("No se pudo exportar.");const b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=(r.headers.get("Content-Disposition")||"").match(/filename="([^"]+)"/)?.[1]||"trabajadores.csv";document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)};
-function cert(w){const mods=w.modules.filter(m=>m.done===m.total).length;
-$("#cv").innerHTML=`<div class="cert"><img src="${document.querySelector("header img").src}" alt="PREVIJOB" style="height:56px"><h2>Certificado de formación en prevención de riesgos laborales</h2><p>Se certifica que</p><p class="cn">${esc(w.name)}</p><p>con DNI/NIE <b>${esc(w.dni)}</b>, de la empresa <b>${esc(w.company)}</b>, ha realizado el curso <b>«PRL para el puesto de Técnico/a de actividades físicas y entrenamiento»</b>, formación teórica y práctica específica del puesto en cumplimiento del <b>artículo 19 de la Ley 31/1995</b> de Prevención de Riesgos Laborales, basada en la evaluación de riesgos del centro de trabajo.</p>
-<table><tr><th>Duración</th><th>Módulos completados</th><th>Examen final</th><th>Fecha</th></tr><tr><td>${hm(META.tot)}</td><td>${mods} de ${META.titles.length}</td><td>${w.examOk}/${w.examN} (${Math.round(w.examOk/w.examN*100)} %) · APTO</td><td>${fd(w.passedAt)}</td></tr></table>
-<p style="font-size:.85rem;color:#4a5a68">Contenidos: ${META.titles.map((t,m)=>(m+1)+". "+t).join(" · ")}.</p><div class="firmas"><div>Firma de la persona trabajadora</div><div>Firma y sello de la empresa</div></div><p style="font-size:.75rem;color:#4a5a68">Reimpresión desde el registro del curso · ${new Date().toLocaleDateString("es-ES",{timeZone:"Europe/Madrid"})}</p></div>`;
-document.body.classList.add("printing");setTimeout(()=>{print();document.body.classList.remove("printing")},150)}
 if(TOK)show().catch(logout);else logout();
 </script></body></html>
