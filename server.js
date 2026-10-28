@@ -12,7 +12,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://curso-prl-tecnico-actividad-fisica.onrender.com").split(",").map(s => s.trim()).filter(Boolean);
 if (!process.env.DATABASE_URL) console.warn("DATABASE_URL no definida");
-if (ADMIN_PASSWORD.length < 12) console.warn("ADMIN_PASSWORD no definida o demasiado corta: panel deshabilitado");
+if (ADMIN_PASSWORD.length < 4) console.warn("ADMIN_PASSWORD no definida o demasiado corta: panel deshabilitado");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -210,7 +210,7 @@ app.delete("/api/me", needUser, wrap(async (req, res) => {
 // ---------- administración ----------
 app.post("/api/admin/login", adminLimiter, (req, res) => {
   const p = String((req.body || {}).password || "");
-  if (ADMIN_PASSWORD.length < 12) return res.status(503).json({ error: "Panel no configurado." });
+  if (ADMIN_PASSWORD.length < 4) return res.status(503).json({ error: "Panel no configurado." });
   const a = crypto.createHash("sha256").update(p).digest(), b = crypto.createHash("sha256").update(ADMIN_PASSWORD).digest();
   if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Contraseña incorrecta." });
   res.json({ token: sign({ t: "a" }, 8) });
