@@ -3,12 +3,12 @@ const SK="curso-prl-taf-session",TK="curso-prl-taf-theme",RK_="curso-prl-taf-rec
 const API=location.hostname==="curso-prl-tecnico-actividad-fisica.onrender.com"?"https://curso-prl-taf-api.onrender.com":(location.protocol==="file:"?"https://curso-prl-taf-api.onrender.com":"");
 const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let U=null,TOKEN=null,st={done:{},scores:{}},syncT=null,syncing=false;
+let U=null,TOKEN=null,st={done:{},scores:{}},syncT=null,syncing=false,ver=0,again=false;
 async function api(p,o={}){const r=await fetch(API+p,{...o,headers:{"Content-Type":"application/json",...(TOKEN?{Authorization:"Bearer "+TOKEN}:{})}});let j={};try{j=await r.json()}catch(e){}return{ok:r.ok,status:r.status,j}}
 function syncState(s){const el=document.getElementById("sync");if(!el)return;el.dataset.s=s;el.textContent={ok:"☁️ Sincronizado",wait:"⏳ Guardando…",off:"📴 Sin conexión · guardado en este dispositivo",err:"⚠️ Pendiente de sincronizar"}[s]||"";}
-const save=()=>{if(!U)return;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
-async function sync(){if(!U||!TOKEN||syncing)return;if(!navigator.onLine){syncState("off");return}syncing=true;try{const{dirty,...p}=st,r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
-if(r.status===401){syncing=false;expired();return}if(!r.ok)throw 0;const last=st.last;st={...r.j.progress,last};LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false}
+const save=()=>{if(!U)return;ver++;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
+async function sync(){if(!U||!TOKEN)return;if(syncing){again=true;return}if(!navigator.onLine){syncState("off");return}syncing=true;const v0=ver;try{const{dirty,...p}=st,r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
+if(r.status===401){syncing=false;expired();return}if(!r.ok)throw 0;if(ver===v0){const last=st.last;st={...r.j.progress,last};LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}else again=true}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false;if(again){again=false;sync()}}
 let curV={p:"home"};function refreshNav(){if(U&&nav.innerHTML){renderNav(curV);progress()}}
 addEventListener("online",()=>{if(U)sync()});addEventListener("offline",()=>syncState("off"));
 const $=s=>document.querySelector(s),main=$("#main"),nav=$("#nav");
