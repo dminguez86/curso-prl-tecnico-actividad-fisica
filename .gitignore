@@ -1,1 +1,3 @@
 node_modules
+ADMIN_PASSWORD.txt
+.env

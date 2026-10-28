@@ -1,10 +1,16 @@
 const KEY="curso-prl-taf-v1";
-const UK="curso-prl-taf-users",SK="curso-prl-taf-session",TK="curso-prl-taf-theme";
+const SK="curso-prl-taf-session",TK="curso-prl-taf-theme",RK_="curso-prl-taf-recent";
+const API=location.hostname==="curso-prl-tecnico-actividad-fisica.onrender.com"?"https://curso-prl-taf-api.onrender.com":(location.protocol==="file:"?"https://curso-prl-taf-api.onrender.com":"");
 const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let U=null,st={done:{},scores:{}};
-const users=()=>LS.get(UK,{});
-const save=()=>{if(U)LS.set(KEY+":"+U.dni,st)};
+let U=null,TOKEN=null,st={done:{},scores:{}},syncT=null,syncing=false;
+async function api(p,o={}){const r=await fetch(API+p,{...o,headers:{"Content-Type":"application/json",...(TOKEN?{Authorization:"Bearer "+TOKEN}:{})}});let j={};try{j=await r.json()}catch(e){}return{ok:r.ok,status:r.status,j}}
+function syncState(s){const el=document.getElementById("sync");if(!el)return;el.dataset.s=s;el.textContent={ok:"☁️ Sincronizado",wait:"⏳ Guardando…",off:"📴 Sin conexión · guardado en este dispositivo",err:"⚠️ Pendiente de sincronizar"}[s]||"";}
+const save=()=>{if(!U)return;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
+async function sync(){if(!U||!TOKEN||syncing)return;if(!navigator.onLine){syncState("off");return}syncing=true;try{const{dirty,...p}=st,r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
+if(r.status===401){syncing=false;expired();return}if(!r.ok)throw 0;const last=st.last;st={...r.j.progress,last};LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false}
+let curV={p:"home"};function refreshNav(){if(U&&nav.innerHTML){renderNav(curV);progress()}}
+addEventListener("online",()=>{if(U)sync()});addEventListener("offline",()=>syncState("off"));
 const $=s=>document.querySelector(s),main=$("#main"),nav=$("#nav");
 let TH;const theme=t=>{TH=t;document.documentElement.dataset.theme=t;$("#theme").textContent=t==="dark"?"☀️":"🌙";LS.set(TK,t)};
 theme(LS.get(TK,null)||LS.get(KEY,{}).theme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"));
@@ -18,11 +24,10 @@ const keys=m=>MODS[m].L.map((_,i)=>m+"-"+i).concat(m+"-final");
 const modPct=m=>{const ks=keys(m);return Math.round(ks.filter(k=>st.done[k]).length/ks.length*100)};
 const allKeys=()=>MODS.flatMap((_,m)=>keys(m)).concat("exam");
 function progress(){const ks=allKeys(),p=Math.round(ks.filter(k=>st.done[k]).length/ks.length*100);$("#bar").style.width=p+"%";$("#pct").textContent=p+"%";}
-function renderNav(v){nav.innerHTML=`<a data-v="home" class="${v.p==="home"?"on":""}">🏠 Portada</a>`+MODS.map((M,m)=>`<details class="ng" ${v.m===m||v.p==="home"?"open":""}><summary>Módulo ${m+1} <small>· ${modPct(m)}% · ${hm(mins(m))}</small></summary>`+M.L.map((l,i)=>`<a data-v="${m}-${i}" class="${v.m===m&&v.p===i?"on":""}">${l.ico} ${m+1}.${i+1} ${l.t}<span class="ck">${st.done[m+"-"+i]?"✅":""}</span></a>`).join("")+`<a data-v="${m}-final" class="${v.m===m&&v.p==="final"?"on":""}">🏁 Test final del módulo<span class="ck">${st.done[m+"-final"]?"✅":""}</span></a></details>`).join("")+`<a data-v="exam" class="${v.p==="exam"?"on":""}">🎓 Examen final del curso<span class="ck">${st.exam&&st.exam.pass?"✅":""}</span></a><a data-v="cert" class="${v.p==="cert"?"on":""}">📜 Certificado</a><a data-v="account" class="${v.p==="account"?"on":""}">👤 Mi cuenta y registro</a><p style="font-size:.8rem;color:var(--mut);padding:8px">Tu progreso se guarda en este navegador. <button id="reset" style="font-size:.8rem">Reiniciar</button></p>`;
-nav.querySelectorAll("a").forEach(a=>a.onclick=()=>go(parse(a.dataset.v)));
-$("#reset").onclick=()=>{if(confirm("¿Borrar todo el progreso?")){st={done:{},scores:{}};save();go({p:"home"})}};}
+function renderNav(v){nav.innerHTML=`<a data-v="home" class="${v.p==="home"?"on":""}">🏠 Portada</a>`+MODS.map((M,m)=>`<details class="ng" ${v.m===m||v.p==="home"?"open":""}><summary>Módulo ${m+1} <small>· ${modPct(m)}% · ${hm(mins(m))}</small></summary>`+M.L.map((l,i)=>`<a data-v="${m}-${i}" class="${v.m===m&&v.p===i?"on":""}">${l.ico} ${m+1}.${i+1} ${l.t}<span class="ck">${st.done[m+"-"+i]?"✅":""}</span></a>`).join("")+`<a data-v="${m}-final" class="${v.m===m&&v.p==="final"?"on":""}">🏁 Test final del módulo<span class="ck">${st.done[m+"-final"]?"✅":""}</span></a></details>`).join("")+`<a data-v="exam" class="${v.p==="exam"?"on":""}">🎓 Examen final del curso<span class="ck">${st.exam&&st.exam.pass?"✅":""}</span></a><a data-v="cert" class="${v.p==="cert"?"on":""}">📜 Certificado</a><a data-v="account" class="${v.p==="account"?"on":""}">👤 Mi cuenta y registro</a><p style="font-size:.8rem;color:var(--mut);padding:8px">Tu progreso se guarda en tu cuenta y se sincroniza entre dispositivos. <span id="sync"></span></p>`;
+nav.querySelectorAll("a").forEach(a=>a.onclick=()=>go(parse(a.dataset.v)));syncState(st.dirty?(navigator.onLine?"err":"off"):"ok");}
 function parse(s){if(!s||s==="home")return{p:"home"};if(s==="exam"||s==="cert"||s==="account")return{p:s};const[m,p]=s.split("-");return{m:+m,p:p==="final"?"final":+p}}
-function go(v){if(!U){auth();return}nav.classList.remove("open");st.last=(v.p==="home"||v.p==="exam"||v.p==="cert"||v.p==="account")?v.p:v.m+"-"+v.p;save();renderNav(v);progress();
+function go(v){if(!U){auth();return}curV=v;nav.classList.remove("open");st.last=(v.p==="home"||v.p==="exam"||v.p==="cert"||v.p==="account")?v.p:v.m+"-"+v.p;save();renderNav(v);progress();
 if(v.p==="home")home();else if(v.p==="exam")exam();else if(v.p==="cert")cert();else if(v.p==="account")account();else if(v.p==="final")finalTest(v.m);else lesson(v.m,v.p);main.firstElementChild.classList.add("view");scrollTo({top:0,behavior:"smooth"});}
 function nextStep(){for(let m=0;m<MODS.length;m++){const i=MODS[m].L.findIndex((_,j)=>!st.done[m+"-"+j]);if(i>=0)return m+"-"+i;if(!st.done[m+"-final"])return m+"-final"}return "exam"}
 const RACK=`<svg class="gym" viewBox="0 0 320 270" aria-hidden="true">
@@ -89,46 +94,58 @@ const LET="TRWAGMYFPDXBNJZSQVHLCKE";
 function normDni(s){return String(s||"").toUpperCase().replace(/[\s.-]/g,"")}
 function validDni(s){const d=normDni(s),m=d.match(/^([XYZ]|\d)(\d{7})([A-Z])$/);if(!m)return false;const n=+(("XYZ".indexOf(m[1])>=0?"XYZ".indexOf(m[1]):m[1])+m[2]);return LET[n%23]===m[3]}
 const validMail=s=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
-async function hash(dni,pin){const b=new TextEncoder().encode("prl-taf|"+dni+"|"+pin);if(crypto.subtle){const h=await crypto.subtle.digest("SHA-256",b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,"0")).join("")}let x=5381;for(const c of b)x=(x*33^c)>>>0;return "d"+x}
-function setHeader(){$("#uname").textContent=U?U.name:"";$("#ubtn").hidden=!U;$("#menu").hidden=!U;document.body.classList.toggle("noauth",!U)}
-function login(dni){const us=users();U=us[dni];LS.set(SK,dni);st=LS.get(KEY+":"+dni,null)||{};st.done=st.done||{};st.scores=st.scores||{};setHeader();go(parse(st.last||"home"))}
-function logout(){U=null;st={done:{},scores:{}};LS.del(SK);setHeader();auth()}
-function auth(mode,pre){nav.innerHTML="";const us=users(),list=Object.values(us);mode=mode||(list.length?"login":"signup");
-main.innerHTML=`<div class="view auth"><section class="hx ah"><div><img class="logo-x" src="${LOGO}" alt="PREVIJOB · Servicio de Prevención"><br><span class="eyb">Formación PRL · Art. 19 Ley 31/1995</span><h2>Técnico/a de actividades físicas y entrenamiento: <em>entra al curso</em></h2><p class="sub">Date de alta con tus datos para que tu progreso, tus notas y tu certificado queden a tu nombre. Los datos se guardan solo en este navegador.</p></div>${RACK}</section>
-<div class="tabs" role="tablist"><button role="tab" id="tsign" aria-selected="${mode==="signup"}" class="${mode==="signup"?"btn":""}">✍️ Darme de alta</button><button role="tab" id="tlog" aria-selected="${mode==="login"}" class="${mode==="login"?"btn":""}">🔑 Acceder${list.length?" ("+list.length+")":""}</button></div>
+async function setHeader(){$("#uname").textContent=U?U.name:"";$("#ubtn").hidden=!U;$("#menu").hidden=!U;document.body.classList.toggle("noauth",!U)}
+function recent(){return LS.get(RK_,[])}
+function remember(u){LS.set(RK_,[{dni:u.dni,name:u.name}].concat(recent().filter(x=>x.dni!==u.dni)).slice(0,6))}
+function emptySt(){return{done:{},scores:{}}}
+function start(user,token,prog){U=user;TOKEN=token;LS.set(SK,{token,user});remember(user);const cache=LS.get(KEY+":"+user.dni,null);
+st=Object.assign(emptySt(),prog||{});if(cache&&cache.dirty){/* cambios offline pendientes: se fusionan en el servidor */const l=st.last;st=Object.assign(emptySt(),cache);st.last=cache.last||l;st.dirty=1}
+LS.set(KEY+":"+user.dni,st);setHeader();go(parse(st.last||"home"));if(st.dirty)sync()}
+function expired(){const d=U&&U.dni;U=null;TOKEN=null;LS.del(SK);setHeader();auth("login",d,"Tu sesión ha caducado. Vuelve a introducir tu PIN; tu progreso local se conserva.")}
+function logout(){U=null;TOKEN=null;st=emptySt();LS.del(SK);setHeader();auth("login")}
+const WAKE="Conectando con el servidor… si estaba en reposo puede tardar hasta 1 minuto.";
+function auth(mode,pre,msg){nav.innerHTML="";const list=recent();mode=mode||(list.length?"login":"signup");
+main.innerHTML=`<div class="view auth"><section class="hx ah"><div><img class="logo-x" src="${LOGO}" alt="PREVIJOB · Servicio de Prevención"><br><span class="eyb">Formación PRL · Art. 19 Ley 31/1995</span><h2>Técnico/a de actividades físicas y entrenamiento: <em>entra al curso</em></h2><p class="sub">Date de alta una sola vez con tus datos y un PIN. Tu progreso, tus notas y tu certificado quedan registrados a tu nombre y podrás continuar desde cualquier dispositivo.</p></div>${RACK}</section>
+<div class="tabs" role="tablist"><button role="tab" id="tsign" aria-selected="${mode==="signup"}" class="${mode==="signup"?"btn":""}">✍️ Darme de alta</button><button role="tab" id="tlog" aria-selected="${mode==="login"}" class="${mode==="login"?"btn":""}">🔑 Acceder</button></div>
 ${mode==="signup"?`<form class="card af" id="fs" novalidate><h3>Alta de la persona trabajadora</h3>
 <label>Nombre y apellidos *<input id="fn" autocomplete="name" maxlength="80" required></label>
 <label>DNI / NIE *<input id="fd" maxlength="12" placeholder="12345678Z o X1234567L" autocapitalize="characters" required></label>
 <label>Empresa *<input id="fe" autocomplete="organization" maxlength="80" required></label>
 <label>Correo electrónico *<input id="fm" type="email" autocomplete="email" maxlength="100" required></label>
-<label>Contraseña o PIN (opcional)<input id="fp" type="password" autocomplete="new-password" maxlength="40" placeholder="Protege tu acceso en este navegador"></label>
-<div class="note rgpd"><b>Protección de datos.</b> Tus datos (nombre, DNI/NIE, empresa y correo) se usarán únicamente para identificarte en este curso, registrar tu progreso y emitir tu certificado de formación en prevención de riesgos laborales. Se almacenan solo en este navegador y no se envían a ningún servidor. Puedes descargarlos o eliminarlos en cualquier momento desde «Mi cuenta». El responsable del tratamiento es tu empresa, ante la que puedes ejercer tus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad.</div>
+<label>PIN o contraseña * <small>(mínimo 4 caracteres)</small><input id="fp" type="password" autocomplete="new-password" maxlength="40" minlength="4" required></label>
+<label>Repite el PIN *<input id="fp2" type="password" autocomplete="new-password" maxlength="40" required></label>
+<div class="note rgpd"><b>Protección de datos.</b> Tus datos (nombre, DNI/NIE, empresa y correo) se usarán únicamente para identificarte en este curso, registrar tu progreso y tus resultados y emitir tu certificado de formación en prevención de riesgos laborales (art. 19 Ley 31/1995). Se guardan en el servidor del curso (base de datos con acceso restringido; el PIN se almacena cifrado) y una copia de tu progreso en este navegador. Tu empresa y su servicio de prevención pueden consultar tu progreso y tus resultados para acreditar la formación. Puedes descargar o eliminar tus datos desde «Mi cuenta». El responsable del tratamiento es tu empresa, ante la que puedes ejercer tus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad.</div>
 <label class="chk"><input type="checkbox" id="fc"> He leído y acepto la información de protección de datos *</label>
 <p class="err" id="ferr" role="alert"></p><button class="go" type="submit">Darme de alta y empezar ▶</button></form>`:
-`<form class="card af" id="fl" novalidate><h3>Acceder con mi usuario</h3>${list.length?`<label>Usuario<select id="ls">${list.map(u=>`<option value="${esc(u.dni)}" ${pre===u.dni?"selected":""}>${esc(u.name)} · ${esc(u.dni.slice(0,-4).replace(/./g,"•")+u.dni.slice(-4))}</option>`).join("")}</select></label>`:"<p>No hay usuarios en este navegador.</p>"}
-<label>DNI / NIE *<input id="ld" maxlength="12" autocapitalize="characters" required></label>
-<label>Contraseña o PIN<input id="lp" type="password" autocomplete="current-password" maxlength="40" placeholder="Solo si la definiste en el alta"></label>
-<p class="err" id="lerr" role="alert"></p><button class="go" type="submit">Entrar ▶</button></form>`}</div>`;
+`<form class="card af" id="fl" novalidate><h3>Acceder con mi DNI/NIE y PIN</h3>${list.length?`<p style="font-size:.9rem">Recientes en este dispositivo: ${list.map(u=>`<button type="button" class="sw" data-d="${esc(u.dni)}">👤 ${esc(u.name)}</button>`).join(" ")}</p>`:""}
+<label>DNI / NIE *<input id="ld" maxlength="12" autocapitalize="characters" autocomplete="username" required value="${esc(pre||"")}"></label>
+<label>PIN o contraseña *<input id="lp" type="password" autocomplete="current-password" maxlength="40" required></label>
+<p class="err" id="lerr" role="alert">${esc(msg||"")}</p><button class="go" type="submit">Entrar ▶</button><p style="font-size:.85rem;color:var(--mut)">¿Has olvidado tu PIN? Pide a tu empresa o al servicio de prevención que restablezca tu alta.</p></form>`}</div>`;
 $("#tsign").onclick=()=>auth("signup");$("#tlog").onclick=()=>auth("login");
-if(mode==="signup")$("#fs").onsubmit=async ev=>{ev.preventDefault();const n=$("#fn").value.trim().replace(/\s+/g," "),d=normDni($("#fd").value),c=$("#fe").value.trim(),m=$("#fm").value.trim(),p=$("#fp").value,er=$("#ferr");
-const bad=[];if(n.length<5||!/\s/.test(n))bad.push("nombre y apellidos");if(!validDni(d))bad.push("DNI/NIE válido (comprueba la letra)");if(c.length<2)bad.push("empresa");if(!validMail(m))bad.push("correo válido");if(!$("#fc").checked)bad.push("aceptar la información de protección de datos");
-if(bad.length){er.textContent="Revisa: "+bad.join(", ")+".";return}const us=users();if(us[d]){er.textContent="Ya existe un usuario con este DNI/NIE en este navegador. Usa «Acceder».";return}
-us[d]={name:n,dni:d,company:c,email:m,pin:p?await hash(d,p):null,consent:new Date().toISOString(),created:new Date().toISOString()};LS.set(UK,us);
-const anon=LS.get(KEY,null);if(anon&&(Object.keys(anon.done||{}).length||Object.keys(anon.scores||{}).length||anon.exam)&&!LS.get(KEY+":"+d,null)){delete anon.theme;delete anon.name;anon.migrated=new Date().toISOString();LS.set(KEY+":"+d,anon);LS.del(KEY)}
-login(d)};
-else{const ls=$("#ls");if(ls)$("#ld").value="";$("#fl").onsubmit=async ev=>{ev.preventDefault();const d=normDni($("#ld").value),us=users(),u=us[d],er=$("#lerr");
-if(!u||(ls&&ls.value!==d)){er.textContent="El DNI/NIE no coincide con el usuario seleccionado o no está dado de alta.";return}
-if(u.pin&&u.pin!==await hash(d,$("#lp").value)){er.textContent="Contraseña o PIN incorrecto.";return}login(d)}}}
-function account(){const us=users(),others=Object.values(us).filter(u=>u.dni!==U.dni);
+const busy=(f,on)=>{const b=f.querySelector("button[type=submit]");b.disabled=on};
+if(mode==="signup")$("#fs").onsubmit=async ev=>{ev.preventDefault();const f=ev.target,n=$("#fn").value.trim().replace(/\s+/g," "),d=normDni($("#fd").value),c=$("#fe").value.trim(),m=$("#fm").value.trim(),p=$("#fp").value,er=$("#ferr");
+const bad=[];if(n.length<5||!/\s/.test(n))bad.push("nombre y apellidos");if(!validDni(d))bad.push("DNI/NIE válido (comprueba la letra)");if(c.length<2)bad.push("empresa");if(!validMail(m))bad.push("correo válido");if(p.length<4)bad.push("PIN de al menos 4 caracteres");else if(p!==$("#fp2").value)bad.push("los dos PIN deben coincidir");if(!$("#fc").checked)bad.push("aceptar la información de protección de datos");
+if(bad.length){er.textContent="Revisa: "+bad.join(", ")+".";return}
+const anon=LS.get(KEY,null),old=LS.get(KEY+":"+d,null),prog=old||anon||{};
+busy(f,true);er.textContent=WAKE;try{const r=await api("/api/register",{method:"POST",body:JSON.stringify({name:n,dni:d,company:c,email:m,pin:p,consent:true,progress:prog})});
+if(!r.ok){er.textContent=r.j.error||"No se pudo completar el alta.";busy(f,false);return}if(anon&&!old)LS.del(KEY);LS.del(KEY+":"+d);start(r.j.user,r.j.token,r.j.progress)}catch(e){er.textContent="No hay conexión con el servidor. El alta necesita conexión a internet; inténtalo de nuevo.";busy(f,false)}};
+else{main.querySelectorAll(".sw").forEach(b=>b.onclick=()=>{$("#ld").value=b.dataset.d;$("#lp").focus()});
+$("#fl").onsubmit=async ev=>{ev.preventDefault();const f=ev.target,d=normDni($("#ld").value),p=$("#lp").value,er=$("#lerr");
+if(!validDni(d)){er.textContent="Introduce un DNI/NIE válido.";return}if(!p){er.textContent="Introduce tu PIN.";return}
+busy(f,true);er.textContent=WAKE;try{const r=await api("/api/login",{method:"POST",body:JSON.stringify({dni:d,pin:p})});
+if(!r.ok){er.textContent=r.j.error||"No se pudo acceder.";busy(f,false);return}start(r.j.user,r.j.token,r.j.progress)}catch(e){er.textContent="No hay conexión con el servidor. Inténtalo de nuevo.";busy(f,false)}}}}
+function account(){
 main.innerHTML=`<div><div class="hero"><h2>👤 Mi cuenta</h2><p>${esc(U.name)} · ${esc(U.dni)} · ${esc(U.company)} · ${esc(U.email)}</p></div>
-<div class="card"><h3>Mi registro</h3><p>Descarga tus datos de alta, tu progreso por lección y tus notas.</p><button class="btn" id="dl">⬇️ Descargar mi registro (JSON)</button></div>
-<div class="card"><h3>Cambiar de usuario</h3>${others.length?`<div class="grid">${others.map(u=>`<button class="sw" data-d="${esc(u.dni)}">👤 ${esc(u.name)}</button>`).join("")}</div>`:"<p>No hay otros usuarios en este navegador.</p>"}<p><button id="nu">➕ Dar de alta otro usuario</button> <button id="lo">🚪 Cerrar sesión</button></p></div>
-<div class="card alert"><b>Eliminar mis datos de este navegador.</b> Borra tu alta, tu progreso y tus notas. <button id="del">Eliminar</button></div></div>`;
-$("#dl").onclick=download;$("#lo").onclick=logout;$("#nu").onclick=()=>{logout();auth("signup")};
-main.querySelectorAll(".sw").forEach(b=>b.onclick=()=>{logout();auth("login",b.dataset.d)});
-$("#del").onclick=()=>{if(confirm("¿Eliminar definitivamente tu usuario y tu progreso de este navegador?")){const us=users();delete us[U.dni];LS.set(UK,us);LS.del(KEY+":"+U.dni);logout()}}}
+<div class="card"><h3>Mi registro</h3><p>Tu progreso se guarda en tu cuenta y se sincroniza entre dispositivos: puedes continuar el curso desde otro ordenador o móvil accediendo con tu DNI/NIE y tu PIN. Estado: <span id="sync2"></span></p><button class="btn" id="dl">⬇️ Descargar mi registro (JSON)</button> <button id="sn">🔄 Sincronizar ahora</button></div>
+<div class="card"><h3>Sesión</h3><p><button id="nu">➕ Dar de alta a otra persona</button> <button id="sw">🔁 Cambiar de usuario</button> <button id="lo">🚪 Cerrar sesión</button></p></div>
+<div class="card alert"><b>Eliminar mi cuenta.</b> Borra definitivamente tu alta, tu progreso y tus notas del servidor y de este navegador. <button id="del">Eliminar</button></div></div>`;
+$("#sync2").textContent=$("#sync")?$("#sync").textContent:"";
+$("#dl").onclick=download;$("#lo").onclick=logout;$("#sw").onclick=logout;$("#nu").onclick=()=>{logout();auth("signup")};$("#sn").onclick=async()=>{await sync();$("#sync2").textContent=$("#sync").textContent};
+$("#del").onclick=async()=>{if(!confirm("¿Eliminar definitivamente tu cuenta, tu progreso y tus notas?"))return;const r=await api("/api/me",{method:"DELETE"}).catch(()=>({ok:false}));if(!r.ok){alert("No se pudo eliminar: necesitas conexión a internet.");return}LS.del(KEY+":"+U.dni);LS.set(RK_,recent().filter(x=>x.dni!==U.dni));logout()}}
 function download(){const det=MODS.map((M,m)=>({modulo:m+1,titulo:M.t,porcentaje:modPct(m),lecciones:M.L.map((l,i)=>({leccion:(m+1)+"."+(i+1),titulo:l.t,minutos:l.min,superada:!!st.done[m+"-"+i],nota:st.scores[m+"-"+i]??null,preguntas:l.q.length})),test_modulo:{superado:!!st.done[m+"-final"],nota:st.scores[m+"-final"]??null,preguntas:FINALN}}));
-const {pin,...datos}=U,r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...datos,pin_definido:!!pin},duracion_horas:+(TOT()/60).toFixed(2),progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
+const r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...U},duracion_horas:+(TOT()/60).toFixed(2),progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
 const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(r,null,2)],{type:"application/json"}));a.download="registro-prl-"+U.dni+".json";document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 $("#ubtn").onclick=()=>go({p:"account"});
-{const d=LS.get(SK,null);if(d&&users()[d])login(d);else{setHeader();auth()}}
+{const S=LS.get(SK,null);if(S&&S.token&&S.user){U=S.user;TOKEN=S.token;st=Object.assign(emptySt(),LS.get(KEY+":"+U.dni,null)||{});setHeader();go(parse(st.last||"home"));
+api("/api/me").then(r=>{if(r.status===401)return expired();if(!r.ok)return;U=r.j.user;LS.set(SK,{token:TOKEN,user:U});setHeader();if(st.dirty)sync();else{const l=st.last;st=Object.assign(emptySt(),r.j.progress);st.last=l||st.last;LS.set(KEY+":"+U.dni,st);refreshNav();syncState("ok")}}).catch(()=>syncState("off"))}
+else{setHeader();auth()}}
