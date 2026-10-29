@@ -47,6 +47,7 @@ async function init() {
     passed boolean NOT NULL DEFAULT false,
     passed_at date,
     updated_at timestamptz NOT NULL DEFAULT now())`);
+  await pool.query(`ALTER TABLE progress ADD COLUMN IF NOT EXISTS time_sec int NOT NULL DEFAULT 0`);
   await pool.query(`CREATE INDEX IF NOT EXISTS workers_company ON workers(lower(company))`);
 }
 
@@ -66,7 +67,7 @@ const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !i
 
 // Sanea el progreso recibido y lo fusiona con el guardado (nunca se pierde avance entre dispositivos)
 function sanitize(d) {
-  const o = { done: {}, scores: {}, exam: null, last: "home" };
+  const o = { done: {}, scores: {}, exam: null, last: "home", timeSec: 0 };
   if (!d || typeof d !== "object") return o;
   if (d.scores && typeof d.scores === "object") for (const k of Object.keys(d.scores)) {
     const v = d.scores[k];
@@ -80,11 +81,12 @@ function sanitize(d) {
     if (o.exam.pass && !o.exam.date) o.exam.date = new Date().toISOString().slice(0, 10);
   }
   if (!o.exam || !o.exam.pass) delete o.done.exam;
+  if (Number.isFinite(d.timeSec) && d.timeSec > 0) o.timeSec = Math.min(Math.floor(d.timeSec), 10 * 365 * 86400);
   if (typeof d.last === "string" && (d.last === "home" || ["exam", "account"].includes(d.last) || KEYSET.has(d.last))) o.last = d.last;
   return o;
 }
 function merge(a, b) { // a = servidor, b = cliente
-  const o = { done: { ...a.done, ...b.done }, scores: { ...a.scores }, exam: a.exam, last: b.last || a.last };
+  const o = { done: { ...a.done, ...b.done }, scores: { ...a.scores }, exam: a.exam, last: b.last || a.last, timeSec: Math.max(a.timeSec || 0, b.timeSec || 0) };
   for (const k of Object.keys(b.scores)) o.scores[k] = Math.max(o.scores[k] ?? 0, b.scores[k]);
   const ea = a.exam, eb = b.exam;
   if (!ea) o.exam = eb;
@@ -100,7 +102,7 @@ function merge(a, b) { // a = servidor, b = cliente
 const DUMMY = bcrypt.hashSync("x-no-user-x", 10);
 // Avance secuencial: descarta notas y aprobados de hitos cuyo anterior no está aprobado
 function enforce(d) {
-  const out = { done: {}, scores: {}, exam: null, last: d.last }, dropped = [];
+  const out = { done: {}, scores: {}, exam: null, last: d.last, timeSec: d.timeSec || 0 }, dropped = [];
   for (let i = 0; i < KEYS.length; i++) {
     const k = KEYS[i], open = i === 0 || !!out.done[KEYS[i - 1]];
     if (k === "exam") {
@@ -160,9 +162,9 @@ async function loadProgress(dni) {
 }
 async function storeProgress(dni, data) {
   const e = data.exam;
-  await pool.query(`INSERT INTO progress(dni,data,pct,exam_ok,exam_n,passed,passed_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now())
-    ON CONFLICT(dni) DO UPDATE SET data=$2,pct=$3,exam_ok=$4,exam_n=$5,passed=$6,passed_at=$7,updated_at=now()`,
-    [dni, data, pctOf(data), e ? e.ok : null, e ? e.n : null, !!(e && e.pass), e && e.pass ? e.date : null]);
+  await pool.query(`INSERT INTO progress(dni,data,pct,exam_ok,exam_n,passed,passed_at,time_sec,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now())
+    ON CONFLICT(dni) DO UPDATE SET data=$2,pct=$3,exam_ok=$4,exam_n=$5,passed=$6,passed_at=$7,time_sec=$8,updated_at=now()`,
+    [dni, data, pctOf(data), e ? e.ok : null, e ? e.n : null, !!(e && e.pass), e && e.pass ? e.date : null, data.timeSec || 0]);
 }
 const wrap = fn => (req, res) => fn(req, res).catch(err => { console.error(err); res.status(500).json({ error: "Error del servidor. Inténtalo de nuevo." }); });
 
@@ -213,9 +215,9 @@ app.put("/api/progress", needUser, wrap(async (req, res) => {
     const prev = enforce(sanitize(r.rows[0] ? r.rows[0].data : {})).data;
     const { data, dropped } = enforce(merge(prev, sanitize(req.body && req.body.progress)));
     const e = data.exam;
-    await client.query(`INSERT INTO progress(dni,data,pct,exam_ok,exam_n,passed,passed_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now())
-      ON CONFLICT(dni) DO UPDATE SET data=$2,pct=$3,exam_ok=$4,exam_n=$5,passed=$6,passed_at=$7,updated_at=now()`,
-      [req.dni, data, pctOf(data), e ? e.ok : null, e ? e.n : null, !!(e && e.pass), e && e.pass ? e.date : null]);
+    await client.query(`INSERT INTO progress(dni,data,pct,exam_ok,exam_n,passed,passed_at,time_sec,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now())
+      ON CONFLICT(dni) DO UPDATE SET data=$2,pct=$3,exam_ok=$4,exam_n=$5,passed=$6,passed_at=$7,time_sec=$8,updated_at=now()`,
+      [req.dni, data, pctOf(data), e ? e.ok : null, e ? e.n : null, !!(e && e.pass), e && e.pass ? e.date : null, data.timeSec || 0]);
     await client.query("COMMIT");
     if (dropped.length) return res.status(409).json({ error: "Avance no permitido: hay que aprobar antes lo anterior.", rejected: dropped, progress: data });
     res.json({ progress: data });
@@ -237,12 +239,12 @@ app.post("/api/admin/login", adminLimiter, (req, res) => {
 });
 
 const LIST_SQL = `SELECT w.dni,w.name,w.company,w.email,w.created_at,w.last_login,
-  coalesce(p.pct,0) pct,p.data,p.exam_ok,p.exam_n,coalesce(p.passed,false) passed,to_char(p.passed_at,'YYYY-MM-DD') passed_at,p.updated_at
+  coalesce(p.pct,0) pct,p.data,p.exam_ok,p.exam_n,coalesce(p.passed,false) passed,to_char(p.passed_at,'YYYY-MM-DD') passed_at,p.updated_at,coalesce(p.time_sec,0) time_sec
   FROM workers w LEFT JOIN progress p USING(dni)`;
 function rowOut(r) {
   const d = sanitize(r.data || {});
   return { dni: r.dni, name: r.name, company: r.company, email: r.email, created: r.created_at, lastLogin: r.last_login, updated: r.updated_at,
-    pct: r.pct, examOk: r.exam_ok, examN: r.exam_n, passed: r.passed, passedAt: r.passed_at,
+    timeSec: Math.max(r.time_sec || 0, d.timeSec || 0), pct: r.pct, examOk: r.exam_ok, examN: r.exam_n, passed: r.passed, passedAt: r.passed_at,
     modules: LESSONS.map((n, m) => ({ done: [...Array(n).keys()].filter(i => d.done[`${m}-${i}`]).length + (d.done[`${m}-final`] ? 1 : 0), total: n + 1, final: d.scores[`${m}-final`] ?? null })),
     scores: d.scores };
 }
@@ -266,14 +268,15 @@ app.delete("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const r = await pool.query("DELETE FROM workers WHERE dni=$1", [normDni(req.params.dni)]);
   res.json({ deleted: r.rowCount });
 }));
+const fmtT = t => { const m = Math.floor((t || 0) / 60); return `${Math.floor(m / 60)} h ${m % 60} min`; };
 const csvCell = v => { let s = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 app.get("/api/admin/export.csv", needAdmin, wrap(async (req, res) => {
   const q = String(req.query.q || "").toLowerCase().slice(0, 80), emp = String(req.query.empresa || "").slice(0, 80);
   const r = await pool.query(LIST_SQL + " ORDER BY w.company, w.name");
   const rows = r.rows.map(rowOut).filter(w => (!emp || w.company === emp) && (!q || (w.name + " " + w.dni + " " + w.email + " " + w.company).toLowerCase().includes(q)));
   const f = d => d ? new Date(d).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "";
-  const head = ["Nombre", "DNI/NIE", "Empresa", "Correo", "Alta", "Último acceso", "Progreso %", ...LESSONS.map((_, m) => `Test M${m + 1} (/${FINALN})`), "Examen final", "Resultado", "Fecha aprobado"];
-  const lines = [head, ...rows.map(w => [w.name, w.dni, w.company, w.email, f(w.created), f(w.lastLogin), w.pct, ...w.modules.map(m => m.final ?? ""), w.examOk != null ? `${w.examOk}/${w.examN}` : "", w.passed ? "APTO" : "NO APTO", w.passedAt ? w.passedAt.split("-").reverse().join("/") : ""])];
+  const head = ["Nombre", "DNI/NIE", "Empresa", "Correo", "Alta", "Último acceso", "Progreso %", "Tiempo conexión", ...LESSONS.map((_, m) => `Test M${m + 1} (/${FINALN})`), "Examen final", "Resultado", "Fecha aprobado"];
+  const lines = [head, ...rows.map(w => [w.name, w.dni, w.company, w.email, f(w.created), f(w.lastLogin), w.pct, fmtT(w.timeSec), ...w.modules.map(m => m.final ?? ""), w.examOk != null ? `${w.examOk}/${w.examN}` : "", w.passed ? "APTO" : "NO APTO", w.passedAt ? w.passedAt.split("-").reverse().join("/") : ""])];
   res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="trabajadores-prl-taf-${new Date().toISOString().slice(0, 10)}.csv"` });
   res.send("\ufeff" + lines.map(l => l.map(csvCell).join(";")).join("\r\n"));
 }));

@@ -8,7 +8,13 @@ async function api(p,o={}){const r=await fetch(API+p,{...o,headers:{"Content-Typ
 function syncState(s){const el=document.getElementById("sync");if(!el)return;el.dataset.s=s;el.textContent={ok:"☁️ Sincronizado",wait:"⏳ Guardando…",off:"📴 Sin conexión · guardado en este dispositivo",err:"⚠️ Pendiente de sincronizar"}[s]||"";}
 const save=()=>{if(!U)return;ver++;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
 async function sync(){if(!U||!TOKEN)return;if(syncing){again=true;return}if(!navigator.onLine){syncState("off");return}syncing=true;const v0=ver;try{const{dirty,...p}=st,r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
-if(r.status===401){syncing=false;expired();return}if(!r.ok&&r.status!==409)throw 0;if(ver===v0||r.status===409){const last=st.last;st={...r.j.progress,last};LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}else again=true}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false;if(again){again=false;sync()}}
+if(r.status===401){syncing=false;expired();return}if(!r.ok&&r.status!==409)throw 0;if(ver===v0||r.status===409){const last=st.last,ts=st.timeSec|0;st={...r.j.progress,last};st.timeSec=Math.max(st.timeSec|0,ts);LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}else again=true}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false;if(again){again=false;sync()}}
+// Tiempo de conexión: segundos activos con sesión iniciada y pestaña visible
+let tLast=null;const fmtT=t=>{t=Math.floor((t||0)/60);return Math.floor(t/60)+" h "+(t%60)+" min"};
+function tick(flush){const now=Date.now(),vis=document.visibilityState==="visible";if(U&&tLast!=null){const dt=Math.round((now-tLast)/1000);if(dt>0&&dt<=120){st.timeSec=(st.timeSec|0)+dt;if(flush===2){LS.set(KEY+":"+U.dni,{...st,dirty:1});st.dirty=1;ver++;sync()}else save()}}tLast=U&&vis?now:null}
+setInterval(()=>tick(),30000);
+document.addEventListener("visibilitychange",()=>tick(document.visibilityState==="hidden"?2:0));
+addEventListener("pagehide",()=>{tick(2)});
 let curV={p:"home"};function refreshNav(){if(U&&nav.innerHTML){renderNav(curV);progress()}}
 addEventListener("online",()=>{if(U)sync()});addEventListener("offline",()=>syncState("off"));
 const $=s=>document.querySelector(s),main=$("#main"),nav=$("#nav");
@@ -101,9 +107,9 @@ function remember(u){LS.set(RK_,[{dni:u.dni,name:u.name}].concat(recent().filter
 function emptySt(){return{done:{},scores:{}}}
 function start(user,token,prog){U=user;TOKEN=token;LS.set(SK,{token,user});remember(user);const cache=LS.get(KEY+":"+user.dni,null);
 st=Object.assign(emptySt(),prog||{});if(cache&&cache.dirty){/* cambios offline pendientes: se fusionan en el servidor */const l=st.last;st=Object.assign(emptySt(),cache);st.last=cache.last||l;st.dirty=1}
-LS.set(KEY+":"+user.dni,st);setHeader();go(parse(st.last||"home"));if(st.dirty)sync()}
+if(cache)st.timeSec=Math.max(st.timeSec|0,cache.timeSec|0);LS.set(KEY+":"+user.dni,st);tLast=document.visibilityState==="visible"?Date.now():null;setHeader();go(parse(st.last||"home"));if(st.dirty)sync()}
 function expired(){const d=U&&U.dni;U=null;TOKEN=null;LS.del(SK);setHeader();auth("login",d,"Tu sesión ha caducado. Vuelve a introducir tu PIN; tu progreso local se conserva.")}
-function logout(){U=null;TOKEN=null;st=emptySt();LS.del(SK);setHeader();auth("login")}
+function logout(){if(U){tick(2)}tLast=null;U=null;TOKEN=null;st=emptySt();LS.del(SK);setHeader();auth("login")}
 const WAKE="Conectando con el servidor… si estaba en reposo puede tardar hasta 1 minuto.";
 function auth(mode,pre,msg){nav.innerHTML="";const list=recent();mode=mode||(list.length?"login":"signup");
 main.innerHTML=`<div class="view auth"><section class="hx ah"><div><img class="logo-x" src="${LOGO}" alt="PREVIJOB · Servicio de Prevención"><br><span class="eyb">Formación PRL · Art. 19 Ley 31/1995</span><h2>Técnico/a de actividades físicas y entrenamiento: <em>entra al curso</em></h2><p class="sub">Date de alta una sola vez con tus datos y un PIN. Tu progreso, tus notas y tu resultado quedan registrados a tu nombre y podrás continuar desde cualquier dispositivo.</p></div>${RACK}</section>
@@ -137,6 +143,7 @@ busy(f,true);er.textContent=WAKE;try{const r=await api("/api/login",{method:"POS
 if(!r.ok){er.textContent=r.j.error||"No se pudo acceder.";busy(f,false);return}start(r.j.user,r.j.token,r.j.progress)}catch(e){er.textContent="No hay conexión con el servidor. Inténtalo de nuevo.";busy(f,false)}}}}
 function account(){
 main.innerHTML=`<div><div class="hero"><h2>👤 Mi cuenta</h2><p>${esc(U.name)} · ${esc(U.dni)} · ${esc(U.company)} · ${esc(U.email)}</p></div>
+<div class="card"><h3>⏱️ Tiempo de conexión</h3><p>Has dedicado <b>${fmtT(st.timeSec)}</b> al curso (tiempo activo con la sesión iniciada y el curso en pantalla).</p></div>
 <div class="card"><h3>Mi registro</h3><p>Tu progreso se guarda en tu cuenta y se sincroniza entre dispositivos: puedes continuar el curso desde otro ordenador o móvil accediendo con tu DNI/NIE y tu PIN. Estado: <span id="sync2"></span></p><button class="btn" id="dl">⬇️ Descargar mi registro (JSON)</button> <button id="sn">🔄 Sincronizar ahora</button></div>
 <div class="card"><h3>Sesión</h3><p><button id="nu">➕ Dar de alta a otra persona</button> <button id="sw">🔁 Cambiar de usuario</button> <button id="lo">🚪 Cerrar sesión</button></p></div>
 <div class="card alert"><b>Eliminar mi cuenta.</b> Borra definitivamente tu alta, tu progreso y tus notas del servidor y de este navegador. <button id="del">Eliminar</button></div></div>`;
@@ -144,9 +151,9 @@ $("#sync2").textContent=$("#sync")?$("#sync").textContent:"";
 $("#dl").onclick=download;$("#lo").onclick=logout;$("#sw").onclick=logout;$("#nu").onclick=()=>{logout();auth("signup")};$("#sn").onclick=async()=>{await sync();$("#sync2").textContent=$("#sync").textContent};
 $("#del").onclick=async()=>{if(!confirm("¿Eliminar definitivamente tu cuenta, tu progreso y tus notas?"))return;const r=await api("/api/me",{method:"DELETE"}).catch(()=>({ok:false}));if(!r.ok){alert("No se pudo eliminar: necesitas conexión a internet.");return}LS.del(KEY+":"+U.dni);LS.set(RK_,recent().filter(x=>x.dni!==U.dni));logout()}}
 function download(){const det=MODS.map((M,m)=>({modulo:m+1,titulo:M.t,porcentaje:modPct(m),lecciones:M.L.map((l,i)=>({leccion:(m+1)+"."+(i+1),titulo:l.t,minutos:l.min,superada:!!st.done[m+"-"+i],nota:st.scores[m+"-"+i]??null,preguntas:l.q.length})),test_modulo:{superado:!!st.done[m+"-final"],nota:st.scores[m+"-final"]??null,preguntas:FINALN}}));
-const r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...U},duracion_horas:+(TOT()/60).toFixed(2),progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
+const r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...U},duracion_horas:+(TOT()/60).toFixed(2),tiempo_conexion_seg:st.timeSec|0,progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
 const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(r,null,2)],{type:"application/json"}));a.download="registro-prl-"+U.dni+".json";document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 $("#ubtn").onclick=()=>go({p:"account"});
-{const S=LS.get(SK,null);if(S&&S.token&&S.user){U=S.user;TOKEN=S.token;st=Object.assign(emptySt(),LS.get(KEY+":"+U.dni,null)||{});setHeader();go(parse(st.last||"home"));
-api("/api/me").then(r=>{if(r.status===401)return expired();if(!r.ok)return;U=r.j.user;LS.set(SK,{token:TOKEN,user:U});setHeader();if(st.dirty)sync();else{const l=st.last;st=Object.assign(emptySt(),r.j.progress);st.last=l||st.last;LS.set(KEY+":"+U.dni,st);refreshNav();syncState("ok")}}).catch(()=>syncState("off"))}
+{const S=LS.get(SK,null);if(S&&S.token&&S.user){U=S.user;TOKEN=S.token;st=Object.assign(emptySt(),LS.get(KEY+":"+U.dni,null)||{});tLast=document.visibilityState==="visible"?Date.now():null;setHeader();go(parse(st.last||"home"));
+api("/api/me").then(r=>{if(r.status===401)return expired();if(!r.ok)return;U=r.j.user;LS.set(SK,{token:TOKEN,user:U});setHeader();if(st.dirty)sync();else{const l=st.last,ts=st.timeSec|0;st=Object.assign(emptySt(),r.j.progress);st.last=l||st.last;st.timeSec=Math.max(st.timeSec|0,ts);LS.set(KEY+":"+U.dni,st);refreshNav();syncState("ok")}}).catch(()=>syncState("off"))}
 else{setHeader();auth()}}
