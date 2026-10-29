@@ -573,6 +573,9 @@ q:[["Trabajadora embarazada y trabajos en altura:",["Se permiten","No se debe ex
 
 const MODS=[M1,M2,M3,M4,M5,M6,M7];
 
+window.__COURSE_BUILD__="20261029101529";
+(function(){try{const B=window.__COURSE_BUILD__,k="prl_taf_build";const o=localStorage.getItem(k);localStorage.setItem(k,B);if(o&&o!==B&&!sessionStorage.getItem("rl_"+B)){sessionStorage.setItem("rl_"+B,"1");location.reload()}}catch(e){}})();
+setInterval(()=>{fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"}).then(r=>r.text()).then(t=>{const m=t.match(/__COURSE_BUILD__="([^"]+)"/);if(m&&m[1]!==window.__COURSE_BUILD__&&!sessionStorage.getItem("rl_"+m[1])){try{tick(2)}catch(e){}sessionStorage.setItem("rl_"+m[1],"1");localStorage.setItem("prl_taf_build",m[1]);setTimeout(()=>location.reload(),400)}}).catch(()=>{})},600000);
 const KEY="curso-prl-taf-v1";
 const SK="curso-prl-taf-session",TK="curso-prl-taf-theme",RK_="curso-prl-taf-recent";
 const API=location.hostname==="curso-prl-tecnico-actividad-fisica.onrender.com"?"https://curso-prl-taf-api.onrender.com":(location.protocol==="file:"?"https://curso-prl-taf-api.onrender.com":"");
@@ -581,12 +584,14 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 let U=null,TOKEN=null,st={done:{},scores:{}},syncT=null,syncing=false,ver=0,again=false;
 async function api(p,o={}){const r=await fetch(API+p,{...o,headers:{"Content-Type":"application/json",...(TOKEN?{Authorization:"Bearer "+TOKEN}:{})}});let j={};try{j=await r.json()}catch(e){}return{ok:r.ok,status:r.status,j}}
 function syncState(s){const el=document.getElementById("sync");if(!el)return;el.dataset.s=s;el.textContent={ok:"☁️ Sincronizado",wait:"⏳ Guardando…",off:"📴 Sin conexión · guardado en este dispositivo",err:"⚠️ Pendiente de sincronizar"}[s]||"";}
-const save=()=>{if(!U)return;ver++;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
+const save=()=>{if(!U)return;acc();ver++;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
 async function sync(){if(!U||!TOKEN)return;if(syncing){again=true;return}if(!navigator.onLine){syncState("off");return}syncing=true;const v0=ver;try{const{dirty,...p}=st,r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
 if(r.status===401){syncing=false;expired();return}if(!r.ok&&r.status!==409)throw 0;if(ver===v0||r.status===409){const last=st.last,ts=st.timeSec|0;st={...r.j.progress,last};st.timeSec=Math.max(st.timeSec|0,ts);LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}else again=true}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false;if(again){again=false;sync()}}
 // Tiempo de conexión: segundos activos con sesión iniciada y pestaña visible
 let tLast=null;const fmtT=t=>{t=Math.floor((t||0)/60);return Math.floor(t/60)+" h "+(t%60)+" min"};
-function tick(flush){const now=Date.now(),vis=document.visibilityState==="visible";if(U&&tLast!=null){const dt=Math.round((now-tLast)/1000);if(dt>0&&dt<=120){st.timeSec=(st.timeSec|0)+dt;if(flush===2){LS.set(KEY+":"+U.dni,{...st,dirty:1});st.dirty=1;ver++;sync()}else save()}}tLast=U&&vis?now:null}
+function acc(){const now=Date.now(),vis=document.visibilityState==="visible";let add=0;if(U&&tLast!=null){const dt=Math.round((now-tLast)/1000);if(dt>0&&dt<=120){st.timeSec=(st.timeSec|0)+dt;add=dt}}tLast=U&&vis?now:null;return add}
+function tick(flush){if(acc()>0||flush===2){if(!U)return;if(flush===2){st.dirty=1;ver++;LS.set(KEY+":"+U.dni,st);sync()}else save()}}
+["pointerdown","keydown","click","touchstart","scroll"].forEach(e=>addEventListener(e,()=>{if(U&&tLast==null&&document.visibilityState==="visible")tLast=Date.now()},{passive:true,capture:true}));
 setInterval(()=>tick(),30000);
 document.addEventListener("visibilitychange",()=>tick(document.visibilityState==="hidden"?2:0));
 addEventListener("pagehide",()=>{tick(2)});
@@ -679,7 +684,7 @@ const validMail=s=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 async function setHeader(){$("#uname").textContent=U?U.name:"";$("#ubtn").hidden=!U;$("#menu").hidden=!U;document.body.classList.toggle("noauth",!U)}
 function recent(){return LS.get(RK_,[])}
 function remember(u){LS.set(RK_,[{dni:u.dni,name:u.name}].concat(recent().filter(x=>x.dni!==u.dni)).slice(0,6))}
-function emptySt(){return{done:{},scores:{}}}
+function emptySt(){return{done:{},scores:{},timeSec:0}}
 function start(user,token,prog){U=user;TOKEN=token;LS.set(SK,{token,user});remember(user);const cache=LS.get(KEY+":"+user.dni,null);
 st=Object.assign(emptySt(),prog||{});if(cache&&cache.dirty){/* cambios offline pendientes: se fusionan en el servidor */const l=st.last;st=Object.assign(emptySt(),cache);st.last=cache.last||l;st.dirty=1}
 if(cache)st.timeSec=Math.max(st.timeSec|0,cache.timeSec|0);LS.set(KEY+":"+user.dni,st);tLast=document.visibilityState==="visible"?Date.now():null;setHeader();go(parse(st.last||"home"));if(st.dirty)sync()}
