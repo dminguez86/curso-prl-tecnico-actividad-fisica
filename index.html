@@ -573,7 +573,7 @@ q:[["Trabajadora embarazada y trabajos en altura:",["Se permiten","No se debe ex
 
 const MODS=[M1,M2,M3,M4,M5,M6,M7];
 
-window.__COURSE_BUILD__="20261029101529";
+window.__COURSE_BUILD__="20261101084315";
 (function(){try{const B=window.__COURSE_BUILD__,k="prl_taf_build";const o=localStorage.getItem(k);localStorage.setItem(k,B);if(o&&o!==B&&!sessionStorage.getItem("rl_"+B)){sessionStorage.setItem("rl_"+B,"1");location.reload()}}catch(e){}})();
 setInterval(()=>{fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"}).then(r=>r.text()).then(t=>{const m=t.match(/__COURSE_BUILD__="([^"]+)"/);if(m&&m[1]!==window.__COURSE_BUILD__&&!sessionStorage.getItem("rl_"+m[1])){try{tick(2)}catch(e){}sessionStorage.setItem("rl_"+m[1],"1");localStorage.setItem("prl_taf_build",m[1]);setTimeout(()=>location.reload(),400)}}).catch(()=>{})},600000);
 const KEY="curso-prl-taf-v1";
@@ -585,11 +585,13 @@ let U=null,TOKEN=null,st={done:{},scores:{}},syncT=null,syncing=false,ver=0,agai
 async function api(p,o={}){const r=await fetch(API+p,{...o,headers:{"Content-Type":"application/json",...(TOKEN?{Authorization:"Bearer "+TOKEN}:{})}});let j={};try{j=await r.json()}catch(e){}return{ok:r.ok,status:r.status,j}}
 function syncState(s){const el=document.getElementById("sync");if(!el)return;el.dataset.s=s;el.textContent={ok:"☁️ Sincronizado",wait:"⏳ Guardando…",off:"📴 Sin conexión · guardado en este dispositivo",err:"⚠️ Pendiente de sincronizar"}[s]||"";}
 const save=()=>{if(!U)return;acc();ver++;st.dirty=1;LS.set(KEY+":"+U.dni,st);clearTimeout(syncT);syncState("wait");syncT=setTimeout(sync,800)};
-async function sync(){if(!U||!TOKEN)return;if(syncing){again=true;return}if(!navigator.onLine){syncState("off");return}syncing=true;const v0=ver;try{const{dirty,...p}=st,r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
-if(r.status===401){syncing=false;expired();return}if(!r.ok&&r.status!==409)throw 0;if(ver===v0||r.status===409){const last=st.last,ts=st.timeSec|0;st={...r.j.progress,last};st.timeSec=Math.max(st.timeSec|0,ts);LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}else again=true}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false;if(again){again=false;sync()}}
+async function sync(){if(!U||!TOKEN)return;if(syncing){again=true;return}if(!navigator.onLine){syncState("off");return}syncing=true;const v0=ver;try{const{dirty,...p}=st,lo={timeByKey:st.timeByKey,attempts:st.attempts},r=await api("/api/progress",{method:"PUT",body:JSON.stringify({progress:p})});
+if(r.status===401){syncing=false;expired();return}if(!r.ok&&r.status!==409)throw 0;if(ver===v0||r.status===409){const last=st.last,ts=st.timeSec|0;st={...r.j.progress,last};st.timeSec=Math.max(st.timeSec|0,ts);mx(st,lo);LS.set(KEY+":"+U.dni,st);syncState("ok");refreshNav()}else again=true}catch(e){syncState(navigator.onLine?"err":"off")}syncing=false;if(again){again=false;sync()}}
+function mx(a,b){for(const f of["timeByKey","attempts"]){a[f]=Object.assign({},a[f]||{});for(const k in(b&&b[f])||{})a[f][k]=Math.max(a[f][k]|0,b[f][k]|0)}return a}
+const att=k=>{st.attempts=st.attempts||{};st.attempts[k]=(st.attempts[k]|0)+1};
 // Tiempo de conexión: segundos activos con sesión iniciada y pestaña visible
 let tLast=null;const fmtT=t=>{t=Math.floor((t||0)/60);return Math.floor(t/60)+" h "+(t%60)+" min"};
-function acc(){const now=Date.now(),vis=document.visibilityState==="visible";let add=0;if(U&&tLast!=null){const dt=Math.round((now-tLast)/1000);if(dt>0&&dt<=120){st.timeSec=(st.timeSec|0)+dt;add=dt}}tLast=U&&vis?now:null;return add}
+function acc(){const now=Date.now(),vis=document.visibilityState==="visible";let add=0;if(U&&tLast!=null){const dt=Math.round((now-tLast)/1000);if(dt>0&&dt<=120){st.timeSec=(st.timeSec|0)+dt;add=dt;const vk=vkey(curV);if(vk){st.timeByKey=st.timeByKey||{};st.timeByKey[vk]=(st.timeByKey[vk]|0)+dt}}}tLast=U&&vis?now:null;return add}
 function tick(flush){if(acc()>0||flush===2){if(!U)return;if(flush===2){st.dirty=1;ver++;LS.set(KEY+":"+U.dni,st);sync()}else save()}}
 ["pointerdown","keydown","click","touchstart","scroll"].forEach(e=>addEventListener(e,()=>{if(U&&tLast==null&&document.visibilityState==="visible")tLast=Date.now()},{passive:true,capture:true}));
 setInterval(()=>tick(),30000);
@@ -658,7 +660,7 @@ ${l.b.map((b,j)=>`<details class="bl" ${j<2?"open":""}><summary>${b[0]}</summary
 <div class="card key"><b>💡 Idea clave.</b> ${l.key}</div>
 <div class="card"><h3>📝 Autoevaluación</h3><p style="color:var(--mut)">Necesitas ${need} aciertos de ${l.q.length} para dar la lección por superada.</p>${quizHTML(l.q,"q"+k)}</div>
 <div class="pn"><button id="prev">◀ ${i?"Lección "+(m+1)+"."+i:"Portada"}</button><button class="btn" id="next">${i<LL.length-1?"Lección "+(m+1)+"."+(i+2):"Test final del módulo"} ▶</button></div></div>`;
-bindQuiz(l.q,"q"+k,need,ok=>{st.scores[k]=Math.max(ok,st.scores[k]||0);if(ok>=need)st.done[k]=1;save();renderNav({m,p:i});progress()});
+bindQuiz(l.q,"q"+k,need,ok=>{att(k);st.scores[k]=Math.max(ok,st.scores[k]||0);if(ok>=need)st.done[k]=1;save();renderNav({m,p:i});progress()});
 $("#prev").onclick=()=>go(i?{m,p:i-1}:{p:"home"});$("#next").onclick=()=>go({m,p:i<LL.length-1?i+1:"final"});bindMedia();}
 function shuffle(a){for(let k=a.length-1;k>0;k--){const r=Math.floor(Math.random()*(k+1));[a[k],a[r]]=[a[r],a[k]]}return a}
 function finalTest(m){const pool=shuffle(MODS[m].L.flatMap(l=>l.q.concat(l.x||[])));
@@ -666,13 +668,13 @@ const n=Math.min(FINALN,pool.length),need=Math.ceil(n*.7),k=m+"-final";
 const qs=pool.slice(0,n).map(q=>{const o=shuffle(q[1].map((t,j)=>({t,c:j===q[2]})));return[q[0],o.map(x=>x.t),o.findIndex(x=>x.c)]});
 main.innerHTML=`<div><div class="hero"><span class="tag" style="background:#ffffff22;color:#fff;border-color:#ffffff55">Evaluación · ${MODS[m].fmin} min</span><h2>🏁 Test final · Módulo ${m+1}: ${MODS[m].t}</h2><p>${n} preguntas al azar de un banco de ${pool.length}. Necesitas ${need} aciertos (70 %). ${st.scores[k]!=null?"Mejor nota: "+st.scores[k]+"/"+n:""}</p></div><div class="card">${quizHTML(qs,"f"+m)}</div>
 <div class="pn"><button id="prev">◀ Última lección</button><button class="btn" id="next">${m<MODS.length-1?"Módulo "+(m+2):"Examen final"} ▶</button></div></div>`;
-bindQuiz(qs,"f"+m,need,ok=>{st.scores[k]=Math.max(ok,st.scores[k]||0);if(ok>=need)st.done[k]=1;save();renderNav({m,p:"final"});progress()});
+bindQuiz(qs,"f"+m,need,ok=>{att(k);st.scores[k]=Math.max(ok,st.scores[k]||0);if(ok>=need)st.done[k]=1;save();renderNav({m,p:"final"});progress()});
 $("#prev").onclick=()=>go({m,p:MODS[m].L.length-1});$("#next").onclick=()=>go(m<MODS.length-1?{m:m+1,p:0}:{p:"exam"});}
 
 function exam(){const pool=shuffle(MODS.flatMap(M=>M.L.flatMap(l=>l.q)));const n=Math.min(EXAMN,pool.length),need=Math.ceil(n*.7);
 const qs=pool.slice(0,n).map(q=>{const o=shuffle(q[1].map((t,j)=>({t,c:j===q[2]})));return[q[0],o.map(x=>x.t),o.findIndex(x=>x.c)]});
 main.innerHTML=`<div><div class="hero"><span class="tag" style="background:#ffffff22;color:#fff;border-color:#ffffff55">Evaluación final del curso · 20 min</span><h2>🎓 Examen final</h2><p>${n} preguntas al azar de un banco de ${pool.length}, de todos los módulos. Necesitas ${need} aciertos (70 %) para superar el curso (APTO). ${st.exam?"Mejor nota: "+st.exam.ok+"/"+st.exam.n:""}</p></div><div class="card">${quizHTML(qs,"ex")}</div><div class="pn"><button id="prev">◀ Portada</button><button class="btn" id="next">👤 Mi cuenta ▶</button></div></div>`;
-bindQuiz(qs,"ex",need,ok=>{const pass=ok>=need,d=new Date().toISOString().slice(0,10);if(!st.exam||ok>st.exam.ok||(pass&&!st.exam.pass))st.exam={ok,n,pass:pass||(st.exam&&st.exam.pass)||false,date:pass?d:(st.exam&&st.exam.date)||d};if(pass)st.done.exam=1;save();renderNav({p:"exam"});progress()});
+bindQuiz(qs,"ex",need,ok=>{att("exam");const pass=ok>=need,d=new Date().toISOString().slice(0,10);if(!st.exam||ok>st.exam.ok||(pass&&!st.exam.pass))st.exam={ok,n,pass:pass||(st.exam&&st.exam.pass)||false,date:pass?d:(st.exam&&st.exam.date)||d};if(pass)st.done.exam=1;save();renderNav({p:"exam"});progress()});
 $("#prev").onclick=()=>go({p:"home"});$("#next").onclick=()=>go({p:"account"});}
 function bindMedia(){main.querySelectorAll("img.zoom").forEach(im=>im.onclick=()=>{const b=document.createElement("div");b.className="lb";b.innerHTML=`<img src="${im.src}" alt="${im.alt}"><button aria-label="Cerrar">✕</button>`;b.onclick=()=>b.remove();document.body.append(b)});}
 addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".lb").forEach(b=>b.remove())});
@@ -684,10 +686,10 @@ const validMail=s=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 async function setHeader(){$("#uname").textContent=U?U.name:"";$("#ubtn").hidden=!U;$("#menu").hidden=!U;document.body.classList.toggle("noauth",!U)}
 function recent(){return LS.get(RK_,[])}
 function remember(u){LS.set(RK_,[{dni:u.dni,name:u.name}].concat(recent().filter(x=>x.dni!==u.dni)).slice(0,6))}
-function emptySt(){return{done:{},scores:{},timeSec:0}}
+function emptySt(){return{done:{},scores:{},timeSec:0,timeByKey:{},attempts:{}}}
 function start(user,token,prog){U=user;TOKEN=token;LS.set(SK,{token,user});remember(user);const cache=LS.get(KEY+":"+user.dni,null);
 st=Object.assign(emptySt(),prog||{});if(cache&&cache.dirty){/* cambios offline pendientes: se fusionan en el servidor */const l=st.last;st=Object.assign(emptySt(),cache);st.last=cache.last||l;st.dirty=1}
-if(cache)st.timeSec=Math.max(st.timeSec|0,cache.timeSec|0);LS.set(KEY+":"+user.dni,st);tLast=document.visibilityState==="visible"?Date.now():null;setHeader();go(parse(st.last||"home"));if(st.dirty)sync()}
+if(cache){st.timeSec=Math.max(st.timeSec|0,cache.timeSec|0);mx(st,cache)}LS.set(KEY+":"+user.dni,st);tLast=document.visibilityState==="visible"?Date.now():null;setHeader();go(parse(st.last||"home"));if(st.dirty)sync()}
 function expired(){const d=U&&U.dni;U=null;TOKEN=null;LS.del(SK);setHeader();auth("login",d,"Tu sesión ha caducado. Vuelve a introducir tu PIN; tu progreso local se conserva.")}
 function logout(){if(U){tick(2)}tLast=null;U=null;TOKEN=null;st=emptySt();LS.del(SK);setHeader();auth("login")}
 const WAKE="Conectando con el servidor… si estaba en reposo puede tardar hasta 1 minuto.";
@@ -731,11 +733,11 @@ $("#sync2").textContent=$("#sync")?$("#sync").textContent:"";
 $("#dl").onclick=download;$("#lo").onclick=logout;$("#sw").onclick=logout;$("#nu").onclick=()=>{logout();auth("signup")};$("#sn").onclick=async()=>{await sync();$("#sync2").textContent=$("#sync").textContent};
 $("#del").onclick=async()=>{if(!confirm("¿Eliminar definitivamente tu cuenta, tu progreso y tus notas?"))return;const r=await api("/api/me",{method:"DELETE"}).catch(()=>({ok:false}));if(!r.ok){alert("No se pudo eliminar: necesitas conexión a internet.");return}LS.del(KEY+":"+U.dni);LS.set(RK_,recent().filter(x=>x.dni!==U.dni));logout()}}
 function download(){const det=MODS.map((M,m)=>({modulo:m+1,titulo:M.t,porcentaje:modPct(m),lecciones:M.L.map((l,i)=>({leccion:(m+1)+"."+(i+1),titulo:l.t,minutos:l.min,superada:!!st.done[m+"-"+i],nota:st.scores[m+"-"+i]??null,preguntas:l.q.length})),test_modulo:{superado:!!st.done[m+"-final"],nota:st.scores[m+"-final"]??null,preguntas:FINALN}}));
-const r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...U},duracion_horas:+(TOT()/60).toFixed(2),tiempo_conexion_seg:st.timeSec|0,progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
+const r={curso:"PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 Ley 31/1995)",generado:new Date().toISOString(),usuario:{...U},duracion_horas:+(TOT()/60).toFixed(2),tiempo_conexion_seg:st.timeSec|0,tiempo_por_hito_seg:st.timeByKey||{},intentos:st.attempts||{},progreso_total:Math.round(allKeys().filter(k=>st.done[k]).length/allKeys().length*100),examen_final:st.exam||null,modulos:det};
 const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(r,null,2)],{type:"application/json"}));a.download="registro-prl-"+U.dni+".json";document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 $("#ubtn").onclick=()=>go({p:"account"});
 {const S=LS.get(SK,null);if(S&&S.token&&S.user){U=S.user;TOKEN=S.token;st=Object.assign(emptySt(),LS.get(KEY+":"+U.dni,null)||{});tLast=document.visibilityState==="visible"?Date.now():null;setHeader();go(parse(st.last||"home"));
-api("/api/me").then(r=>{if(r.status===401)return expired();if(!r.ok)return;U=r.j.user;LS.set(SK,{token:TOKEN,user:U});setHeader();if(st.dirty)sync();else{const l=st.last,ts=st.timeSec|0;st=Object.assign(emptySt(),r.j.progress);st.last=l||st.last;st.timeSec=Math.max(st.timeSec|0,ts);LS.set(KEY+":"+U.dni,st);refreshNav();syncState("ok")}}).catch(()=>syncState("off"))}
+api("/api/me").then(r=>{if(r.status===401)return expired();if(!r.ok)return;api("/api/session",{method:"POST"}).catch(()=>{});U=r.j.user;LS.set(SK,{token:TOKEN,user:U});setHeader();if(st.dirty)sync();else{const l=st.last,ts=st.timeSec|0,lo={timeByKey:st.timeByKey,attempts:st.attempts};st=Object.assign(emptySt(),r.j.progress);st.last=l||st.last;st.timeSec=Math.max(st.timeSec|0,ts);mx(st,lo);LS.set(KEY+":"+U.dni,st);refreshNav();syncState("ok")}}).catch(()=>syncState("off"))}
 else{setHeader();auth()}}
 
 </script>

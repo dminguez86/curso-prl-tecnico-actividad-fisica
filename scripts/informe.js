@@ -2,7 +2,7 @@
 // Uso: node scripts/informe.js <DNI> <salida.pdf> [--json worker.json]
 // Informe de alumno con el formato de la plataforma GMM/Previjob (ref.: «Informe alumno: LEONARDO MANTILLA QUISPE», GMM):
 // Datos del curso · Alumno · Progreso de lecciones · Realización de test · Desglose de tiempo · Conexiones a las herramientas.
-// Solo se muestran datos reales de la plataforma: sin registro de IP, conexiones, tiempo por lección, foros/chat ni intentos -> «N/D».
+// Solo datos reales: IP/conexiones, tiempo por lección e intentos se registran desde el 01/11/2026; sin foros/chat -> «N/D».
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm"), { execFileSync } = require("child_process");
 const ROOT = path.join(__dirname, ".."), API = process.env.API || "https://curso-prl-taf-api.onrender.com";
@@ -31,16 +31,17 @@ async function api() {
   return { w: r.worker, n };
 }
 (async () => {
-  const { w, n } = await api(), s = w.scores || {}, ts = w.timeSec || 0, last = fdt(w.updated || w.lastLogin);
+  const { w, n } = await api(), s = w.scores || {}, tk = w.timeByKey || {}, at = w.attempts || {}, log = w.connectionLog || [], nc = w.connections ?? log.length, ts = w.timeSec || 0, last = fdt(w.updated || w.lastLogin);
   const pct = (sc, q) => sc == null ? "—" : Math.round(sc / q * 100) + "%";
   const prog = [], tests = [];
   MODS.forEach((M, m) => {
     M.L.forEach((l, i) => { const sc = s[`${m}-${i}`], nm = `${m + 1}.${i + 1} ${l.t}`;
-      prog.push([nm, sc != null ? "Completado" : "Pendiente"]); tests.push([`Test lección ${m + 1}.${i + 1}`, nm, pct(sc, l.q.length)]); });
-    const f = s[`${m}-final`], nm = `Test final módulo ${m + 1}`; prog.push([nm, f != null ? "Completado" : "Pendiente"]); tests.push([nm, `Módulo ${m + 1}. ${M.t}`, pct(f, FINALN)]);
+      prog.push([nm, sc != null ? "Completado" : "Pendiente", `${m}-${i}`]); tests.push([`Test lección ${m + 1}.${i + 1}`, nm, pct(sc, l.q.length), `${m}-${i}`]); });
+    const f = s[`${m}-final`], nm = `Test final módulo ${m + 1}`; prog.push([nm, f != null ? "Completado" : "Pendiente", `${m}-final`]); tests.push([nm, `Módulo ${m + 1}. ${M.t}`, pct(f, FINALN), `${m}-final`]);
   });
   const ex = w.examOk != null ? Math.round(w.examOk / w.examN * 100) + "%" : "—";
-  prog.push(["Examen final del curso", w.passed ? "Completado" : "Pendiente"]); tests.push(["Examen final", "Examen final del curso", ex]);
+  prog.push(["Examen final del curso", w.passed ? "Completado" : "Pendiente", "exam"]); tests.push(["Examen final", "Examen final del curso", ex, "exam"]);
+  const hasT = Object.keys(tk).length > 0, hasA = Object.keys(at).length > 0, tl = Object.values(tk).reduce((a, b) => a + b, 0);
   const kv = rows => rows.map(r => `<tr>${r.map((c, i) => `<td class=${i % 2 ? "v" : "k"}>${esc(c)}</td>`).join("")}</tr>`).join("");
   const now = new Date(), stamp = mad(now, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(/(\d+)\/(\d+)\/(\d+),?/, "$3-$2-$1");
   const name = String(w.name || "").toUpperCase();
@@ -60,7 +61,7 @@ th{background:#0066a1;color:#fff;font-weight:bold}td.k{font-weight:bold;backgrou
  ["Fecha inicio curso:", "N/D (curso abierto)", "Fecha fin curso:", "N/D (curso abierto)"],
  ["Profesores:", "Previjob · Servicio de Prevención", "Nº de alumnos:", n]])}</table>
 <h2>Alumno: ${esc(name)}</h2><table>${kv([
- ["Nombre", w.name, "Nº de conexiones", "N/D", "Post en foros", "N/D"],
+ ["Nombre", w.name, "Nº de conexiones", String(nc), "Post en foros", "N/D"],
  ["DNI", w.dni, "Tiempo invertido en lecciones", ts > 0 ? hms(ts) : "0:00:00 *", "Chat", "N/D"],
  ["E-mail", w.email || "—", "Tiempo mínimo (Lecciones)", "N/D", "Documentos compartidos", "N/D"],
  ["Empresa", w.company || "—", "Superación de contenidos", `${w.pct ?? 0} / 100 (${w.pct ?? 0} %)`, "Mensajes(enviados/recibidos)", "N/D"],
@@ -69,15 +70,16 @@ th{background:#0066a1;color:#fff;font-weight:bold}td.k{font-weight:bold;backgrou
 ${ts > 0 ? "" : `<p class=note>* Sin tiempo registrado: el registro de tiempo de conexión se activó el 29/10/2026 y solo cuenta desde que el alumno recarga el curso con la versión nueva.</p>`}
 <p class=note>Primera conexión = fecha de alta en la plataforma. N/D = dato no registrado por esta plataforma.</p>
 <h2>Progreso de lecciones</h2><table><tr><th>Lecciones</th><th>Tiempo en la lección</th><th>Cumplimiento tiempo mínimo</th><th>Última conexión</th></tr>
-${prog.map(([a, b]) => `<tr><td>${esc(a)}</td><td class=c>N/D</td><td>${b}</td><td>${b === "Completado" ? last : "—"}</td></tr>`).join("")}</table>
-<p class=note>No se registra el tiempo por lección; «Última conexión» es la última actividad registrada del alumno en el curso.</p>
+${prog.map(([a, b, k]) => `<tr><td>${esc(a)}</td><td class=c>${tk[k] ? hms(tk[k]) : hasT ? "0:00:00" : "N/D"}</td><td>${b}</td><td>${b === "Completado" ? last : "—"}</td></tr>`).join("")}</table>
+<p class=note>${hasT ? "Tiempo activo (pestaña visible y sesión iniciada) en cada lección/test." : "N/D: sin tiempo por lección registrado (el registro por lección se activó el 01/11/2026; la actividad anterior no se puede recuperar)."} «Última conexión» es la última actividad registrada del alumno en el curso.</p>
 <h2>Realización de test</h2><table><tr><th>Ejercicios</th><th>Lecciones</th><th>Puntuación</th><th>Intentos</th></tr>
-${tests.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class=c>${c}</td><td class=c>N/D</td></tr>`).join("")}</table>
-<p class=note>Puntuación: mejor nota obtenida. Criterio de superación: 70 % de aciertos. La plataforma no guarda el número de intentos.</p>
+${tests.map(([a, b, c, k]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class=c>${c}</td><td class=c>${at[k] ? at[k] : hasA ? (c === "—" ? "0" : "N/D") : "N/D"}</td></tr>`).join("")}</table>
+<p class=note>Puntuación: mejor nota obtenida. Criterio de superación: 70 % de aciertos. ${hasA ? "Intentos: veces que se ha completado el test." : "Intentos N/D: el registro de intentos se activó el 01/11/2026; los realizados antes no constan."}</p>
 <h2>Desglose de tiempo por secciones/herramientas</h2><table><tr><th>Herramienta</th><th>Tiempo</th><th>Herramienta</th><th>Tiempo</th></tr>
-<tr><td>Tiempo en lecciones</td><td>${hms(ts)}</td><td>Otras herramientas (foros, chat, notas…)</td><td>N/D</td></tr>
+<tr><td>Tiempo en lecciones y tests</td><td>${hasT ? hms(tl) : "N/D"}</td><td>Otras herramientas (foros, chat, notas…)</td><td>N/D</td></tr>
 <tr><td class=k>Tiempo total en el curso</td><td><b>${hms(ts)}</b></td><td></td><td></td></tr></table>
-<h2>Conexiones a las herramientas del curso</h2><p class=note style="font-size:8.5pt">El registro detallado de IP/conexiones por herramienta no está disponible en esta plataforma.</p>
+<h2>Conexiones a las herramientas del curso</h2>${log.length ? `<table><tr><th>Herramienta</th><th>Fecha</th><th>IP</th></tr>${log.map(c => `<tr><td>${esc(c.tool || "Acceso")}</td><td>${fdt(c.at)}</td><td>${esc(c.ip || "N/D")}</td></tr>`).join("")}</table>` : ""}
+<p class=note style="font-size:8.5pt">${log.length ? "Registro de accesos al curso (alta, login y reanudación de sesión) con la IP de origen." : "Sin conexiones registradas: el registro de conexiones e IP se activó el 01/11/2026; los accesos anteriores no constan."}</p>
 </body></html>`;
   const tmp = path.join(require("os").tmpdir(), "informe-" + w.dni + ".html"); fs.writeFileSync(tmp, html);
   execFileSync("google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-pdf-header-footer", "--print-to-pdf=" + path.resolve(out), "file://" + tmp], { stdio: "ignore" });

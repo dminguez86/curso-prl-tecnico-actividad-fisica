@@ -48,6 +48,13 @@ async function init() {
     passed_at date,
     updated_at timestamptz NOT NULL DEFAULT now())`);
   await pool.query(`ALTER TABLE progress ADD COLUMN IF NOT EXISTS time_sec int NOT NULL DEFAULT 0`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS sessions(
+    id bigserial PRIMARY KEY,
+    dni varchar(9) NOT NULL REFERENCES workers(dni) ON DELETE CASCADE,
+    at timestamptz NOT NULL DEFAULT now(),
+    kind varchar(12) NOT NULL,
+    ip text, user_agent text)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS sessions_dni_at ON sessions(dni, at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS workers_company ON workers(lower(company))`);
 }
 
@@ -67,7 +74,7 @@ const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !i
 
 // Sanea el progreso recibido y lo fusiona con el guardado (nunca se pierde avance entre dispositivos)
 function sanitize(d) {
-  const o = { done: {}, scores: {}, exam: null, last: "home", timeSec: 0 };
+  const o = { done: {}, scores: {}, exam: null, last: "home", timeSec: 0, timeByKey: {}, attempts: {} };
   if (!d || typeof d !== "object") return o;
   if (d.scores && typeof d.scores === "object") for (const k of Object.keys(d.scores)) {
     const v = d.scores[k];
@@ -82,11 +89,15 @@ function sanitize(d) {
   }
   if (!o.exam || !o.exam.pass) delete o.done.exam;
   if (Number.isFinite(d.timeSec) && d.timeSec > 0) o.timeSec = Math.min(Math.floor(d.timeSec), 10 * 365 * 86400);
+  for (const [f, cap] of [["timeByKey", 10 * 365 * 86400], ["attempts", 100000]]) if (d[f] && typeof d[f] === "object") for (const k of Object.keys(d[f])) {
+    const v = d[f][k]; if (KEYSET.has(k) && Number.isFinite(v) && v > 0) o[f][k] = Math.min(Math.floor(v), cap);
+  }
   if (typeof d.last === "string" && (d.last === "home" || ["exam", "account"].includes(d.last) || KEYSET.has(d.last))) o.last = d.last;
   return o;
 }
 function merge(a, b) { // a = servidor, b = cliente
-  const o = { done: { ...a.done, ...b.done }, scores: { ...a.scores }, exam: a.exam, last: b.last || a.last, timeSec: Math.max(a.timeSec || 0, b.timeSec || 0) };
+  const o = { done: { ...a.done, ...b.done }, scores: { ...a.scores }, exam: a.exam, last: b.last || a.last, timeSec: Math.max(a.timeSec || 0, b.timeSec || 0), timeByKey: { ...(a.timeByKey || {}) }, attempts: { ...(a.attempts || {}) } };
+  for (const f of ["timeByKey", "attempts"]) for (const k of Object.keys(b[f] || {})) o[f][k] = Math.max(o[f][k] || 0, b[f][k]);
   for (const k of Object.keys(b.scores)) o.scores[k] = Math.max(o.scores[k] ?? 0, b.scores[k]);
   const ea = a.exam, eb = b.exam;
   if (!ea) o.exam = eb;
@@ -102,7 +113,7 @@ function merge(a, b) { // a = servidor, b = cliente
 const DUMMY = bcrypt.hashSync("x-no-user-x", 10);
 // Avance secuencial: descarta notas y aprobados de hitos cuyo anterior no está aprobado
 function enforce(d) {
-  const out = { done: {}, scores: {}, exam: null, last: d.last, timeSec: d.timeSec || 0 }, dropped = [];
+  const out = { done: {}, scores: {}, exam: null, last: d.last, timeSec: d.timeSec || 0, timeByKey: d.timeByKey || {}, attempts: d.attempts || {} }, dropped = [];
   for (let i = 0; i < KEYS.length; i++) {
     const k = KEYS[i], open = i === 0 || !!out.done[KEYS[i - 1]];
     if (k === "exam") {
@@ -166,6 +177,14 @@ async function storeProgress(dni, data) {
     ON CONFLICT(dni) DO UPDATE SET data=$2,pct=$3,exam_ok=$4,exam_n=$5,passed=$6,passed_at=$7,time_sec=$8,updated_at=now()`,
     [dni, data, pctOf(data), e ? e.ok : null, e ? e.n : null, !!(e && e.pass), e && e.pass ? e.date : null, data.timeSec || 0]);
 }
+// Registro de conexiones (evidencia de formación): fecha, IP y navegador. Máx. 500 por trabajador.
+const clientIp = req => clean(String(req.get("x-forwarded-for") || "").split(",")[0] || req.ip || "", 45) || null;
+async function logConn(req, dni, kind) {
+  try {
+    await pool.query("INSERT INTO sessions(dni,kind,ip,user_agent) VALUES($1,$2,$3,$4)", [dni, kind, clientIp(req), clean(req.get("user-agent"), 200) || null]);
+    await pool.query("DELETE FROM sessions WHERE dni=$1 AND id NOT IN (SELECT id FROM sessions WHERE dni=$1 ORDER BY at DESC LIMIT 500)", [dni]);
+  } catch (e) { console.error("logConn", e.message); }
+}
 const wrap = fn => (req, res) => fn(req, res).catch(err => { console.error(err); res.status(500).json({ error: "Error del servidor. Inténtalo de nuevo." }); });
 
 app.get("/api/health", wrap(async (req, res) => { await pool.query("SELECT 1"); res.json({ ok: true }); }));
@@ -186,6 +205,7 @@ app.post("/api/register", registerLimiter, wrap(async (req, res) => {
   if (!r.rows[0]) return res.status(409).json({ error: "Ya existe una persona dada de alta con este DNI/NIE. Usa «Acceder»." });
   const data = enforce(merge(sanitize({}), sanitize(b.progress))).data;
   await storeProgress(dni, data);
+  await logConn(req, dni, "alta");
   res.status(201).json({ token: sign({ t: "u", dni }, 24 * 30), user: userOut(r.rows[0]), progress: data });
 }));
 
@@ -196,6 +216,7 @@ app.post("/api/login", loginLimiter, wrap(async (req, res) => {
   const ok = r.rows[0] ? await bcrypt.compare(b.pin, r.rows[0].pin_hash) : (await bcrypt.compare(b.pin, DUMMY), false);
   if (!ok) return res.status(401).json({ error: "DNI/NIE o PIN incorrectos." });
   await pool.query("UPDATE workers SET last_login=now() WHERE dni=$1", [dni]);
+  await logConn(req, dni, "login");
   res.json({ token: sign({ t: "u", dni }, 24 * 30), user: userOut(r.rows[0]), progress: await loadProgress(dni) });
 }));
 
@@ -203,6 +224,14 @@ app.get("/api/me", needUser, wrap(async (req, res) => {
   const r = await pool.query("SELECT * FROM workers WHERE dni=$1", [req.dni]);
   if (!r.rows[0]) return res.status(401).json({ error: "Usuario no encontrado." });
   res.json({ user: userOut(r.rows[0]), progress: await loadProgress(req.dni) });
+}));
+
+const sessionLimiter = rateLimit({ windowMs: 60 * 60e3, limit: 30, standardHeaders: "draft-7", legacyHeaders: false });
+app.post("/api/session", sessionLimiter, needUser, wrap(async (req, res) => {
+  const w = await pool.query("UPDATE workers SET last_login=now() WHERE dni=$1 RETURNING 1", [req.dni]);
+  if (!w.rows[0]) return res.status(401).json({ error: "Usuario no encontrado." });
+  await logConn(req, req.dni, "sesion");
+  res.json({ ok: true });
 }));
 
 app.put("/api/progress", needUser, wrap(async (req, res) => {
@@ -239,14 +268,17 @@ app.post("/api/admin/login", adminLimiter, (req, res) => {
 });
 
 const LIST_SQL = `SELECT w.dni,w.name,w.company,w.email,w.created_at,w.last_login,
-  coalesce(p.pct,0) pct,p.data,p.exam_ok,p.exam_n,coalesce(p.passed,false) passed,to_char(p.passed_at,'YYYY-MM-DD') passed_at,p.updated_at,coalesce(p.time_sec,0) time_sec
+  coalesce(p.pct,0) pct,p.data,p.exam_ok,p.exam_n,coalesce(p.passed,false) passed,to_char(p.passed_at,'YYYY-MM-DD') passed_at,p.updated_at,coalesce(p.time_sec,0) time_sec,
+  (SELECT count(*)::int FROM sessions s WHERE s.dni=w.dni) connections
   FROM workers w LEFT JOIN progress p USING(dni)`;
+const KIND = { alta: "Alta", login: "Acceso (login)", sesion: "Sesión" };
 function rowOut(r) {
   const d = sanitize(r.data || {});
   return { dni: r.dni, name: r.name, company: r.company, email: r.email, created: r.created_at, lastLogin: r.last_login, updated: r.updated_at,
     timeSec: Math.max(r.time_sec || 0, d.timeSec || 0), pct: r.pct, examOk: r.exam_ok, examN: r.exam_n, passed: r.passed, passedAt: r.passed_at,
     modules: LESSONS.map((n, m) => ({ done: [...Array(n).keys()].filter(i => d.done[`${m}-${i}`]).length + (d.done[`${m}-final`] ? 1 : 0), total: n + 1, final: d.scores[`${m}-final`] ?? null })),
-    scores: d.scores };
+    scores: d.scores, timeByKey: d.timeByKey, attempts: d.attempts, connections: r.connections || 0,
+    attemptsTotal: Object.values(d.attempts).reduce((a, b) => a + b, 0) };
 }
 app.get("/api/admin/workers", needAdmin, wrap(async (req, res) => {
   const r = await pool.query(LIST_SQL + " ORDER BY w.company, w.name");
@@ -255,7 +287,8 @@ app.get("/api/admin/workers", needAdmin, wrap(async (req, res) => {
 app.get("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const r = await pool.query(LIST_SQL + " WHERE w.dni=$1", [normDni(req.params.dni)]);
   if (!r.rows[0]) return res.status(404).json({ error: "No encontrado" });
-  res.json({ worker: rowOut(r.rows[0]) });
+  const c = await pool.query("SELECT at,kind,ip FROM sessions WHERE dni=$1 ORDER BY at DESC LIMIT 200", [r.rows[0].dni]);
+  res.json({ worker: { ...rowOut(r.rows[0]), connectionLog: c.rows.map(x => ({ at: x.at, ip: x.ip, tool: KIND[x.kind] || x.kind })) } });
 }));
 // Trabajadores que han terminado el curso (examen final aprobado)
 app.get("/api/admin/finalizados", needAdmin, wrap(async (req, res) => {
@@ -275,8 +308,8 @@ app.get("/api/admin/export.csv", needAdmin, wrap(async (req, res) => {
   const r = await pool.query(LIST_SQL + " ORDER BY w.company, w.name");
   const rows = r.rows.map(rowOut).filter(w => (!emp || w.company === emp) && (!q || (w.name + " " + w.dni + " " + w.email + " " + w.company).toLowerCase().includes(q)));
   const f = d => d ? new Date(d).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "";
-  const head = ["Nombre", "DNI/NIE", "Empresa", "Correo", "Alta", "Último acceso", "Progreso %", "Tiempo conexión", ...LESSONS.map((_, m) => `Test M${m + 1} (/${FINALN})`), "Examen final", "Resultado", "Fecha aprobado"];
-  const lines = [head, ...rows.map(w => [w.name, w.dni, w.company, w.email, f(w.created), f(w.lastLogin), w.pct, fmtT(w.timeSec), ...w.modules.map(m => m.final ?? ""), w.examOk != null ? `${w.examOk}/${w.examN}` : "", w.passed ? "APTO" : "NO APTO", w.passedAt ? w.passedAt.split("-").reverse().join("/") : ""])];
+  const head = ["Nombre", "DNI/NIE", "Empresa", "Correo", "Alta", "Último acceso", "Progreso %", "Tiempo conexión", "Nº conexiones", "Intentos test", ...LESSONS.map((_, m) => `Test M${m + 1} (/${FINALN})`), "Examen final", "Resultado", "Fecha aprobado"];
+  const lines = [head, ...rows.map(w => [w.name, w.dni, w.company, w.email, f(w.created), f(w.lastLogin), w.pct, fmtT(w.timeSec), w.connections, w.attemptsTotal, ...w.modules.map(m => m.final ?? ""), w.examOk != null ? `${w.examOk}/${w.examN}` : "", w.passed ? "APTO" : "NO APTO", w.passedAt ? w.passedAt.split("-").reverse().join("/") : ""])];
   res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="trabajadores-prl-taf-${new Date().toISOString().slice(0, 10)}.csv"` });
   res.send("\ufeff" + lines.map(l => l.map(csvCell).join(";")).join("\r\n"));
 }));
