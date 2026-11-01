@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Uso: node scripts/informe.js <DNI> <salida.pdf> [--json worker.json]
-// Descarga el detalle del trabajador del panel (contraseña en ADMIN_PASSWORD o ../ADMIN_PASSWORD.txt) y genera un PDF A4.
+// Informe de alumno con el formato de la plataforma GMM/Previjob (ref.: «Informe alumno: LEONARDO MANTILLA QUISPE», GMM):
+// Datos del curso · Alumno · Progreso de lecciones · Realización de test · Desglose de tiempo · Conexiones a las herramientas.
+// Solo se muestran datos reales de la plataforma: sin registro de IP, conexiones, tiempo por lección, foros/chat ni intentos -> «N/D».
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm"), { execFileSync } = require("child_process");
 const ROOT = path.join(__dirname, ".."), API = process.env.API || "https://curso-prl-taf-api.onrender.com";
@@ -9,48 +11,75 @@ if (!dni) { console.error("Uso: node scripts/informe.js <DNI> <salida.pdf> [--js
 const stub = new Proxy(function () { return ""; }, { get: (t, k) => k === Symbol.toPrimitive ? () => "" : stub });
 const ctx = new Proxy({}, { has: () => true, get: (t, k) => k in t ? t[k] : (k in globalThis ? globalThis[k] : stub), set: (t, k, v) => (t[k] = v, true) });
 vm.createContext(ctx);
-vm.runInContext([1,2,3,4,5,6,7].map(i => fs.readFileSync(path.join(ROOT, "src", `m${i}.js`), "utf8")).join("\n") .replace(/^const (M\d)=/gm, "$1=") + "\nMODS=[M1,M2,M3,M4,M5,M6,M7];", ctx);
-const MODS = ctx.MODS, FINALN = 15;
+vm.runInContext([1,2,3,4,5,6,7].map(i => fs.readFileSync(path.join(ROOT, "src", `m${i}.js`), "utf8")).join("\n").replace(/^const (M\d)=/gm, "$1=") + "\nMODS=[M1,M2,M3,M4,M5,M6,M7];", ctx);
+const MODS = ctx.MODS, FINALN = 15, EXAMMIN = 20;
+const TOTMIN = MODS.reduce((a, M) => a + M.L.reduce((b, l) => b + (+l.min || 0), 0) + (+M.fmin || 0), 0) + EXAMMIN;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const fdt = d => d ? new Date(d).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "short", timeStyle: "short" }) + " (hora de Madrid)" : "—";
-const fd = d => d ? d.split("-").reverse().join("/") : "—";
-const fmtT = t => { const m = Math.floor((t || 0) / 60); return `${Math.floor(m / 60)} h ${m % 60} min`; };
-async function getWorker() {
-  if (ji > 0) { const j = JSON.parse(fs.readFileSync(process.argv[ji + 1], "utf8")); return j.worker || j; }
+const mad = (d, o) => new Date(d).toLocaleString("es-ES", Object.assign({ timeZone: "Europe/Madrid" }, o));
+const fdt = d => d ? mad(d, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(",", "") : "—";
+const hms = t => { t = Math.floor(t || 0); return `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+const LOGO = (() => { try { return fs.readFileSync(path.join(ROOT, "admin", "index.html"), "utf8").match(/data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/)[0]; } catch { return null; } })();
+async function api() {
+  if (ji > 0) { const j = JSON.parse(fs.readFileSync(process.argv[ji + 1], "utf8")); return { w: j.worker || j, n: j.nAlumnos ?? "N/D" }; }
   const pw = process.env.ADMIN_PASSWORD || fs.readFileSync(path.join(ROOT, "ADMIN_PASSWORD.txt"), "utf8").trim();
   const t = await (await fetch(API + "/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) })).json();
-  if (!t.token) throw new Error("Login admin fallido: " + JSON.stringify(t));
-  const r = await (await fetch(API + "/api/admin/workers/" + encodeURIComponent(dni), { headers: { Authorization: "Bearer " + t.token } })).json();
-  if (!r.worker) throw new Error("Trabajador no encontrado"); return r.worker;
+  if (!t.token) throw new Error("Login admin fallido");
+  const H = { headers: { Authorization: "Bearer " + t.token } };
+  const r = await (await fetch(API + "/api/admin/workers/" + encodeURIComponent(dni), H)).json();
+  if (!r.worker) throw new Error("Trabajador no encontrado");
+  let n = "N/D"; try { const l = await (await fetch(API + "/api/admin/workers", H)).json(); n = (l.workers || []).length; } catch {}
+  return { w: r.worker, n };
 }
 (async () => {
-  const w = await getWorker(), s = w.scores || {}, need = n => Math.ceil(n * 0.7);
-  const ts = w.timeSec || 0;
-  const tTxt = ts > 0 ? fmtT(ts) : (w.passed ? "Sin datos previos (curso finalizado antes de activar el registro de tiempo, 29/10/2026)" : "0 h 0 min");
-  const row = (t, sc, n) => sc == null ? `<tr><td>${esc(t)}</td><td>—</td><td>—</td><td>Pendiente</td></tr>` :
-    `<tr><td>${esc(t)}</td><td>${sc}/${n}</td><td>${Math.round(sc / n * 100)} %</td><td class=${sc >= need(n) ? "ok>Aprobado" : "no>No superado"}</td></tr>`;
-  let nl = 0, okl = 0;
-  const mods = MODS.map((M, m) => `<div class=mod><h3>Módulo ${m + 1}. ${esc(M.t)}</h3><table><tr><th>Test</th><th>Nota</th><th>%</th><th>Resultado</th></tr>` +
-    M.L.map((l, i) => { nl++; const sc = s[`${m}-${i}`]; if (sc != null && sc >= need(l.q.length)) okl++; return row(`${i + 1}. ${l.t}`, sc, l.q.length); }).join("") +
-    row("Test final del módulo", s[`${m}-final`], FINALN).replace("<tr>", "<tr class=fin>") + `</table></div>`).join("");
-  const info = [["Trabajador/a", w.name], ["DNI/NIE", w.dni], ["Empresa", w.company], ["Correo electrónico", w.email], ["Fecha de alta", fdt(w.created)], ["Último acceso", fdt(w.lastLogin)],
-    ["Última actividad registrada", fdt(w.updated)], ["Tiempo de conexión registrado", tTxt], ["Fecha de finalización", fd(w.passedAt)], ["Progreso", w.pct + " %"], ["Tests de lección superados", `${okl} de ${nl}`],
-    ["Examen final", w.examOk != null ? `${w.examOk}/${w.examN} (${Math.round(w.examOk / w.examN * 100)} %)` : "—"]].map(([a, b]) => `<tr><td>${a}</td><td>${esc(b)}</td></tr>`).join("");
+  const { w, n } = await api(), s = w.scores || {}, ts = w.timeSec || 0, last = fdt(w.updated || w.lastLogin);
+  const pct = (sc, q) => sc == null ? "—" : Math.round(sc / q * 100) + "%";
+  const prog = [], tests = [];
+  MODS.forEach((M, m) => {
+    M.L.forEach((l, i) => { const sc = s[`${m}-${i}`], nm = `${m + 1}.${i + 1} ${l.t}`;
+      prog.push([nm, sc != null ? "Completado" : "Pendiente"]); tests.push([`Test lección ${m + 1}.${i + 1}`, nm, pct(sc, l.q.length)]); });
+    const f = s[`${m}-final`], nm = `Test final módulo ${m + 1}`; prog.push([nm, f != null ? "Completado" : "Pendiente"]); tests.push([nm, `Módulo ${m + 1}. ${M.t}`, pct(f, FINALN)]);
+  });
+  const ex = w.examOk != null ? Math.round(w.examOk / w.examN * 100) + "%" : "—";
+  prog.push(["Examen final del curso", w.passed ? "Completado" : "Pendiente"]); tests.push(["Examen final", "Examen final del curso", ex]);
+  const kv = rows => rows.map(r => `<tr>${r.map((c, i) => `<td class=${i % 2 ? "v" : "k"}>${esc(c)}</td>`).join("")}</tr>`).join("");
+  const now = new Date(), stamp = mad(now, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(/(\d+)\/(\d+)\/(\d+),?/, "$3-$2-$1");
+  const name = String(w.name || "").toUpperCase();
   const html = `<html lang=es><meta charset=utf-8><style>
-@page{size:A4;margin:16mm 14mm 18mm}body{font-family:Montserrat,Arial,sans-serif;font-size:10pt;color:#222}
-.hd{border-bottom:4px solid #009CD7;padding-bottom:6px;margin-bottom:12px}.hd b{color:#009CD7;font-size:20pt}.hd span{float:right;color:#16B14C;font-weight:bold;margin-top:10px}
-h2{color:#0277ab;font-size:13pt}h3{color:#fff;background:#009CD7;padding:5px 8px;font-size:10.5pt;margin:0}
-table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccd;padding:4px 6px}th{background:#e6f5fb;text-align:left}
-.mod{margin-bottom:12px;page-break-inside:avoid}.ok{color:#128a3c;font-weight:bold}.no{color:#b00020;font-weight:bold}.fin td{background:#eefaf2;font-weight:bold}
-.info td:first-child{width:32%;background:#f4f8fa;font-weight:bold}.res{font-size:14pt;font-weight:bold}
-.ft{margin-top:16px;font-size:8pt;color:#666;border-top:1px solid #ccc;padding-top:6px}</style><body>
-<div class=hd><b>Previjob</b><span>Informe de progreso del curso</span></div>
-<h2>Curso PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 LPRL)</h2>
-<table class=info>${info}<tr><td>Resultado global</td><td class="res ${w.passed ? "ok" : "no"}">${w.passed ? "APTO" : "NO APTO"}</td></tr></table>
-<p style="font-size:8.5pt;color:#555">Criterio de superación: 70 % de aciertos en cada test. Tiempo de conexión: suma del tiempo activo con la sesión iniciada y el curso visible en pantalla (no cuenta pestañas en segundo plano ni pausas de más de 2 minutos); registrado desde el 29/10/2026.</p>
-<h2>Detalle por módulos</h2>${mods}
-<div class=ft>Generado el ${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })} (hora de Madrid) a partir del registro de la plataforma del curso.</div></body></html>`;
+@page{size:A4;margin:12mm 12mm 14mm}body{font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;color:#222}
+.top{display:flex;align-items:center;gap:16px;margin-bottom:10px}.top img{height:42px}.top h1{font-size:13pt;font-weight:normal;margin:0}
+h2{background:#0066a1;color:#fff;font-size:10pt;margin:14px 0 0;padding:5px 7px}
+table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}td,th{border:1px solid #d5d9dd;padding:3px 6px;text-align:left;vertical-align:top}
+th{background:#0066a1;color:#fff;font-weight:bold}td.k{font-weight:bold;background:#f5f7f9;white-space:nowrap}.c{text-align:center}
+.note{font-size:7.5pt;color:#555;margin:4px 0 0}</style><body>
+<div class=top>${LOGO ? `<img src="${LOGO}">` : "<b style='color:#009CD7;font-size:18pt'>Previjob</b>"}<h1>Informe alumno: ${esc(name)} (${stamp})</h1></div>
+<h2>Datos del curso</h2><table>${kv([
+ ["Acción Formativa:", "PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 LPRL)", "Cod. Acción Formativa:", "PRL-TAF-ART19"],
+ ["Grupo:", "PRL-TAF-ART19 · " + (w.company || "—"), "Cod grupo:", "PRL-TAF-ART19"],
+ ["Modalidad:", "ONLINE", "", ""],
+ ["Horas Totales curso:", (TOTMIN / 60).toFixed(2) + " Horas", "Horas a cursar:", (TOTMIN / 60).toFixed(2) + " Horas (100 % del contenido)"],
+ ["Fecha inicio curso:", "N/D (curso abierto)", "Fecha fin curso:", "N/D (curso abierto)"],
+ ["Profesores:", "Previjob · Servicio de Prevención", "Nº de alumnos:", n]])}</table>
+<h2>Alumno: ${esc(name)}</h2><table>${kv([
+ ["Nombre", w.name, "Nº de conexiones", "N/D", "Post en foros", "N/D"],
+ ["DNI", w.dni, "Tiempo invertido en lecciones", ts > 0 ? hms(ts) : "0:00:00 *", "Chat", "N/D"],
+ ["E-mail", w.email || "—", "Tiempo mínimo (Lecciones)", "N/D", "Documentos compartidos", "N/D"],
+ ["Empresa", w.company || "—", "Superación de contenidos", `${w.pct ?? 0} / 100 (${w.pct ?? 0} %)`, "Mensajes(enviados/recibidos)", "N/D"],
+ ["Primera conexión", fdt(w.created), "Estado", w.passed ? "Apto" : "No apto", "Descarga del certificado", "No"],
+ ["Última conexión", last, "Fecha de finalización", w.passedAt ? w.passedAt.split("-").reverse().join("/") : "—", "", ""]])}</table>
+${ts > 0 ? "" : `<p class=note>* Sin tiempo registrado: el registro de tiempo de conexión se activó el 29/10/2026 y solo cuenta desde que el alumno recarga el curso con la versión nueva.</p>`}
+<p class=note>Primera conexión = fecha de alta en la plataforma. N/D = dato no registrado por esta plataforma.</p>
+<h2>Progreso de lecciones</h2><table><tr><th>Lecciones</th><th>Tiempo en la lección</th><th>Cumplimiento tiempo mínimo</th><th>Última conexión</th></tr>
+${prog.map(([a, b]) => `<tr><td>${esc(a)}</td><td class=c>N/D</td><td>${b}</td><td>${b === "Completado" ? last : "—"}</td></tr>`).join("")}</table>
+<p class=note>No se registra el tiempo por lección; «Última conexión» es la última actividad registrada del alumno en el curso.</p>
+<h2>Realización de test</h2><table><tr><th>Ejercicios</th><th>Lecciones</th><th>Puntuación</th><th>Intentos</th></tr>
+${tests.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class=c>${c}</td><td class=c>N/D</td></tr>`).join("")}</table>
+<p class=note>Puntuación: mejor nota obtenida. Criterio de superación: 70 % de aciertos. La plataforma no guarda el número de intentos.</p>
+<h2>Desglose de tiempo por secciones/herramientas</h2><table><tr><th>Herramienta</th><th>Tiempo</th><th>Herramienta</th><th>Tiempo</th></tr>
+<tr><td>Tiempo en lecciones</td><td>${hms(ts)}</td><td>Otras herramientas (foros, chat, notas…)</td><td>N/D</td></tr>
+<tr><td class=k>Tiempo total en el curso</td><td><b>${hms(ts)}</b></td><td></td><td></td></tr></table>
+<h2>Conexiones a las herramientas del curso</h2><p class=note style="font-size:8.5pt">El registro detallado de IP/conexiones por herramienta no está disponible en esta plataforma.</p>
+</body></html>`;
   const tmp = path.join(require("os").tmpdir(), "informe-" + w.dni + ".html"); fs.writeFileSync(tmp, html);
   execFileSync("google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-pdf-header-footer", "--print-to-pdf=" + path.resolve(out), "file://" + tmp], { stdio: "ignore" });
-  console.log("PDF:", path.resolve(out), "· tiempo:", tTxt);
+  console.log("PDF:", path.resolve(out), "· tiempo:", hms(ts), "· alumnos:", n);
 })().catch(e => { console.error(e.message); process.exit(1); });
