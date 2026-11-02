@@ -6,13 +6,17 @@
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm"), { execFileSync } = require("child_process");
 const ROOT = path.join(__dirname, ".."), API = process.env.API || "https://curso-prl-taf-api.onrender.com";
-const [dni, out = "informe.pdf"] = process.argv.slice(2); const ji = process.argv.indexOf("--json");
-if (!dni) { console.error("Uso: node scripts/informe.js <DNI> <salida.pdf> [--json worker.json]"); process.exit(1); }
+const ci = process.argv.indexOf("--course"), COURSE = ci > 0 ? process.argv[ci + 1] : (process.env.COURSE || "taf");
+const CINFO = { taf: { name: "PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 LPRL)", code: "PRL-TAF-ART19", dir: path.join(ROOT, "src"), n: 7, base: 1, unit: "módulo" }, ofi: { name: "PRL para Personal de oficinas – Grupo Housfy (art. 19 LPRL)", code: "PRL-OFI-HOUSFY", dir: path.join(ROOT, "courses", "ofi"), n: 12, base: 0, unit: "lección" } }[COURSE];
+if (!CINFO) { console.error("Curso desconocido: " + COURSE); process.exit(1); }
+const [dni, out = "informe.pdf"] = process.argv.slice(2).filter((a, i, A) => a !== "--course" && A[i - 1] !== "--course"); const ji = process.argv.indexOf("--json");
+if (!dni) { console.error("Uso: node scripts/informe.js <DNI> <salida.pdf> [--course taf|ofi] [--json worker.json]"); process.exit(1); }
 const stub = new Proxy(function () { return ""; }, { get: (t, k) => k === Symbol.toPrimitive ? () => "" : stub });
 const ctx = new Proxy({}, { has: () => true, get: (t, k) => k in t ? t[k] : (k in globalThis ? globalThis[k] : stub), set: (t, k, v) => (t[k] = v, true) });
 vm.createContext(ctx);
-vm.runInContext([1,2,3,4,5,6,7].map(i => fs.readFileSync(path.join(ROOT, "src", `m${i}.js`), "utf8")).join("\n").replace(/^const (M\d)=/gm, "$1=") + "\nMODS=[M1,M2,M3,M4,M5,M6,M7];", ctx);
-const MODS = ctx.MODS, FINALN = 15, EXAMMIN = 20;
+const NS = Array.from({ length: CINFO.n }, (_, i) => i + 1);
+vm.runInContext(NS.map(i => fs.readFileSync(path.join(CINFO.dir, `m${i}.js`), "utf8")).join("\n").replace(/^const (M\d+)=/gm, "$1=") + "\nMODS=[" + NS.map(i => "M" + i) + "];", ctx);
+const MODS = ctx.MODS, FINALNS = MODS.map(M => Math.min(15, M.L.reduce((a, l) => a + l.q.length + (l.x || []).length, 0))), EXAMMIN = 20, B = CINFO.base;
 const TOTMIN = MODS.reduce((a, M) => a + M.L.reduce((b, l) => b + (+l.min || 0), 0) + (+M.fmin || 0), 0) + EXAMMIN;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mad = (d, o) => new Date(d).toLocaleString("es-ES", Object.assign({ timeZone: "Europe/Madrid" }, o));
@@ -24,7 +28,7 @@ async function api() {
   const pw = process.env.ADMIN_PASSWORD || fs.readFileSync(path.join(ROOT, "ADMIN_PASSWORD.txt"), "utf8").trim();
   const t = await (await fetch(API + "/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) })).json();
   if (!t.token) throw new Error("Login admin fallido");
-  const H = { headers: { Authorization: "Bearer " + t.token } };
+  const H = { headers: { Authorization: "Bearer " + t.token, "X-Course": COURSE } };
   const r = await (await fetch(API + "/api/admin/workers/" + encodeURIComponent(dni), H)).json();
   if (!r.worker) throw new Error("Trabajador no encontrado");
   let n = "N/D"; try { const l = await (await fetch(API + "/api/admin/workers", H)).json(); n = (l.workers || []).length; } catch {}
@@ -35,9 +39,9 @@ async function api() {
   const pct = (sc, q) => sc == null ? "—" : Math.round(sc / q * 100) + "%";
   const prog = [], tests = [];
   MODS.forEach((M, m) => {
-    M.L.forEach((l, i) => { const sc = s[`${m}-${i}`], nm = `${m + 1}.${i + 1} ${l.t}`;
-      prog.push([nm, sc != null ? "Completado" : "Pendiente", `${m}-${i}`]); tests.push([`Test lección ${m + 1}.${i + 1}`, nm, pct(sc, l.q.length), `${m}-${i}`]); });
-    const f = s[`${m}-final`], nm = `Test final módulo ${m + 1}`; prog.push([nm, f != null ? "Completado" : "Pendiente", `${m}-final`]); tests.push([nm, `Módulo ${m + 1}. ${M.t}`, pct(f, FINALN), `${m}-final`]);
+    M.L.forEach((l, i) => { const sc = s[`${m}-${i}`], nm = `${m + B}.${i + 1} ${l.t}`;
+      prog.push([nm, sc != null ? "Completado" : "Pendiente", `${m}-${i}`]); tests.push([`Test lección ${m + B}.${i + 1}`, nm, pct(sc, l.q.length), `${m}-${i}`]); });
+    const f = s[`${m}-final`], nm = `Test final ${CINFO.unit} ${m + B}`; prog.push([nm, f != null ? "Completado" : "Pendiente", `${m}-final`]); tests.push([nm, `${CINFO.unit === "lección" ? "Lección" : "Módulo"} ${m + B}. ${M.t}`, pct(f, FINALNS[m]), `${m}-final`]);
   });
   const ex = w.examOk != null ? Math.round(w.examOk / w.examN * 100) + "%" : "—";
   prog.push(["Examen final del curso", w.passed ? "Completado" : "Pendiente", "exam"]); tests.push(["Examen final", "Examen final del curso", ex, "exam"]);
@@ -54,8 +58,8 @@ th{background:#0066a1;color:#fff;font-weight:bold}td.k{font-weight:bold;backgrou
 .note{font-size:7.5pt;color:#555;margin:4px 0 0}</style><body>
 <div class=top>${LOGO ? `<img src="${LOGO}">` : "<b style='color:#009CD7;font-size:18pt'>Previjob</b>"}<h1>Informe alumno: ${esc(name)} (${stamp})</h1></div>
 <h2>Datos del curso</h2><table>${kv([
- ["Acción Formativa:", "PRL · Técnico/a de actividades físicas y entrenamiento (art. 19 LPRL)", "Cod. Acción Formativa:", "PRL-TAF-ART19"],
- ["Grupo:", "PRL-TAF-ART19 · " + (w.company || "—"), "Cod grupo:", "PRL-TAF-ART19"],
+ ["Acción Formativa:", CINFO.name, "Cod. Acción Formativa:", CINFO.code],
+ ["Grupo:", CINFO.code + " · " + (w.company || "—"), "Cod grupo:", CINFO.code],
  ["Modalidad:", "ONLINE", "", ""],
  ["Horas Totales curso:", (TOTMIN / 60).toFixed(2) + " Horas", "Horas a cursar:", (TOTMIN / 60).toFixed(2) + " Horas (100 % del contenido)"],
  ["Fecha inicio curso:", "N/D (curso abierto)", "Fecha fin curso:", "N/D (curso abierto)"],
