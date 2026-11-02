@@ -301,6 +301,12 @@ app.delete("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const r = await pool.query("DELETE FROM workers WHERE dni=$1", [normDni(req.params.dni)]);
   res.json({ deleted: r.rowCount });
 }));
+// Copia de seguridad completa (solo administración): todas las filas de workers, progress y sessions
+app.get("/api/admin/backup", needAdmin, wrap(async (req, res) => {
+  const out = { at: new Date().toISOString() };
+  for (const t of ["workers", "progress", "sessions"]) out[t] = (await pool.query(`SELECT * FROM ${t}`)).rows;
+  res.json(out);
+}));
 const fmtT = t => { const m = Math.floor((t || 0) / 60); return `${Math.floor(m / 60)} h ${m % 60} min`; };
 const csvCell = v => { let s = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 app.get("/api/admin/export.csv", needAdmin, wrap(async (req, res) => {
