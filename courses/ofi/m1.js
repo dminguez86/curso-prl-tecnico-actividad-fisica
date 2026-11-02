@@ -2,7 +2,7 @@ const V=v=>`<span class="vb v-${v.toLowerCase()}">${v}</span>`;
 const RK=(c,n)=>`<div class="rk"><b>${n}</b></div>`;
 const LEY=s=>`<div class="ley">⚖️ <b>Texto legal.</b> ${s}</div>`;
 const ER="Evaluación de riesgos del puesto «Personal de oficinas» de tu sociedad del Grupo Housfy";
-const FPVD="Fichas técnicas PVD: [F1] «Pantallas de visualización» (Pla d'Activitats Preventives de la Seguretat Social 2022) y [F2] «Puestos de trabajo con PVD. Criterios ergonómicos»";
+
 const M1={t:"Introducción: tu formación, tus derechos y la evaluación de tu puesto",fmin:3,s:"Por qué recibes esta formación (art. 19), qué derechos y obligaciones tienes (arts. 18 y 29), cómo se ha evaluado el puesto de Personal de oficinas y cómo comunicar un riesgo.",L:[
 {t:"Formación, derechos y obligaciones en prevención",ico:"⚖️",min:6,src:"Ley 31/1995 de Prevención de Riesgos Laborales, arts. 18, 19 y 29 · "+ER+" (riesgo 300, medidas 1 y 2)",
 obj:["Conocer qué exige el art. 19 de la Ley 31/1995 sobre tu formación.","Identificar tus derechos de información, consulta y participación (art. 18).","Conocer tus obligaciones como trabajador o trabajadora (art. 29)."],
