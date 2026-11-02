@@ -1,5 +1,5 @@
 const V=v=>`<span class="vb v-${v.toLowerCase()}">${v}</span>`;
-const FIGI=(src,alt,cap,w,h)=>`<figure class="fig"><img src="${src}" alt="${alt}" width="${w}" height="${h}" loading="lazy" decoding="async"><figcaption>${cap}</figcaption></figure>`;const FIG=(svg,cap)=>`<figure class="fig">${svg}<figcaption>${cap}</figcaption></figure>`;const RK=(c,n)=>`<div class="rk"><b>${n}</b></div>`;
+const FIGI=(src,alt,cap,w,h)=>`<figure class="fig"><img src="${src}" data-hd="${src.replace(/\.webp$/,"-hd.webp")}" alt="${alt}" width="${w}" height="${h}" loading="lazy" decoding="async" role="button" tabindex="0" title="Pulsa para ampliar"><figcaption>${cap}</figcaption></figure>`;const FIG=(svg,cap)=>`<figure class="fig">${svg}<figcaption>${cap}</figcaption></figure>`;const RK=(c,n)=>`<div class="rk"><b>${n}</b></div>`;
 const LEY=s=>`<div class="ley">⚖️ <b>Texto legal.</b> ${s}</div>`;
 const ER="Evaluación de riesgos del puesto «Personal de oficinas» de tu sociedad del Grupo Housfy";
 
