@@ -1,5 +1,5 @@
 const V=v=>`<span class="vb v-${v.toLowerCase()}">${v}</span>`;
-const RK=(c,n)=>`<div class="rk"><b>${n}</b></div>`;
+const FIG=(svg,cap)=>`<figure class="fig">${svg}<figcaption>${cap}</figcaption></figure>`;const RK=(c,n)=>`<div class="rk"><b>${n}</b></div>`;
 const LEY=s=>`<div class="ley">⚖️ <b>Texto legal.</b> ${s}</div>`;
 const ER="Evaluación de riesgos del puesto «Personal de oficinas» de tu sociedad del Grupo Housfy";
 
