@@ -10,7 +10,7 @@ const { Pool } = require("pg");
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
-const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://curso-prl-tecnico-actividad-fisica.onrender.com,https://curso-prl-oficina-housfy.onrender.com").split(",").map(s => s.trim()).filter(Boolean);
+const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://curso-prl-tecnico-actividad-fisica.onrender.com,https://curso-prl-oficina-housfy.onrender.com,https://curso-prl-higienista-bucodental.onrender.com").split(",").map(s => s.trim()).filter(Boolean);
 if (!process.env.DATABASE_URL) console.warn("DATABASE_URL no definida");
 if (ADMIN_PASSWORD.length < 4) console.warn("ADMIN_PASSWORD no definida o demasiado corta: panel deshabilitado");
 
@@ -32,8 +32,11 @@ function mkCourse(id, name, code, meta, origin) {
 }
 const COURSES = {
   taf: mkCourse("taf", "Técnico/a de actividades físicas y entrenamiento", "PRL-TAF-ART19", require("./course-meta.json"), "https://curso-prl-tecnico-actividad-fisica.onrender.com"),
-  ofi: mkCourse("ofi", "Personal de oficinas – Grupo Housfy", "PRL-OFI-HOUSFY", require("./courses/ofi-meta.json"), "https://curso-prl-oficina-housfy.onrender.com")
+  ofi: mkCourse("ofi", "Personal de oficinas – Grupo Housfy", "PRL-OFI-HOUSFY", require("./courses/ofi-meta.json"), "https://curso-prl-oficina-housfy.onrender.com"),
+  hbd: mkCourse("hbd", "Higienista bucodental", "PRL-HBD", require("./courses/hbd-meta.json"), "https://curso-prl-higienista-bucodental.onrender.com")
 };
+// Las webs de cada curso siempre son orígenes permitidos (además de ALLOWED_ORIGINS)
+for (const c of Object.values(COURSES)) if (c.origin && !ORIGINS.includes(c.origin)) ORIGINS.push(c.origin);
 const DEFAULT_COURSE = "taf";
 const courseId = v => (typeof v === "string" && Object.prototype.hasOwnProperty.call(COURSES, v)) ? v : null;
 // Curso de la petición: cabecera X-Course, ?course= o body.course; si no, el curso de la web de origen; si no, «taf».
@@ -341,7 +344,7 @@ app.get("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   res.json({ worker: { ...rowOut(C, r.rows[0]), connectionLog: c.rows.map(x => ({ at: x.at, ip: x.ip, tool: KIND[x.kind] || x.kind })) } });
 }));
 // Trabajadores que han terminado el curso (examen final aprobado)
-// ?course=taf (por defecto, igual que antes) · ?course=ofi · ?course=all (todos; id = «curso:DNI» salvo en taf, que mantiene el DNI)
+// ?course=taf (por defecto, igual que antes) · ?course=ofi · ?course=hbd · ?course=all (todos; id = «curso:DNI» salvo en taf, que mantiene el DNI)
 app.get("/api/admin/finalizados", needAdmin, wrap(async (req, res) => {
   const all = req.query.course === "all", C = COURSES[reqCourse(req)];
   const r = await pool.query(`SELECT w.course,w.dni,w.name,w.company,p.exam_ok,p.exam_n,to_char(p.passed_at,'YYYY-MM-DD') passed_at
