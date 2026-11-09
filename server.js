@@ -32,7 +32,7 @@ function mkCourse(id, name, code, meta, origin) {
 }
 const COURSES = {
   taf: mkCourse("taf", "Técnico/a de actividades físicas y entrenamiento", "PRL-TAF-ART19", require("./course-meta.json"), "https://curso-prl-tecnico-actividad-fisica.onrender.com"),
-  ofi: mkCourse("ofi", "Personal de oficinas – Grupo Housfy", "PRL-OFI-HOUSFY", require("./courses/ofi-meta.json"), "https://curso-prl-oficina-housfy.onrender.com"),
+  ofi: Object.assign(mkCourse("ofi", "Personal de oficinas – Grupo Housfy", "PRL-OFI-HOUSFY", require("./courses/ofi-meta.json"), "https://curso-prl-oficina-housfy.onrender.com"), { needSign: true }),
   hbd: mkCourse("hbd", "Higienista bucodental", "PRL-HBD", require("./courses/hbd-meta.json"), "https://curso-prl-higienista-bucodental.onrender.com"),
   bar: mkCourse("bar", "Barista", "PRL-BAR", require("./courses/bar-meta.json"), "https://curso-prl-barista.onrender.com")
 };
@@ -75,7 +75,14 @@ async function init() {
   await pool.query(`CREATE INDEX IF NOT EXISTS sessions_dni_at ON sessions(dni, at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS workers_company ON workers(lower(company))`);
   await migrateMultiCourse();
+  // Firma del trabajador: entrega de información (art. 18 LPRL) y consentimiento/renuncia a la vigilancia de la salud (art. 22 LPRL)
+  await pool.query(`CREATE TABLE IF NOT EXISTS firmas(
+    course varchar(16) NOT NULL, dni varchar(9) NOT NULL,
+    medical boolean NOT NULL, centro varchar(120), localidad varchar(80),
+    signature text NOT NULL, signed_at timestamptz NOT NULL DEFAULT now(), ip text, user_agent text,
+    PRIMARY KEY(course, dni), FOREIGN KEY(course, dni) REFERENCES workers(course, dni) ON DELETE CASCADE)`);
 }
+const firmaOf = async (course, dni) => { const r = await pool.query("SELECT medical, signed_at FROM firmas WHERE course=$1 AND dni=$2", [course, dni]); return r.rows[0] ? { at: r.rows[0].signed_at, medical: r.rows[0].medical } : null; };
 // Migración multi-curso (idempotente, en una transacción): añade la columna «course» (por defecto 'taf', así
 // todos los datos existentes quedan en el curso de actividad física sin cambiar ningún valor) y pasa las claves
 // a (course, dni) para que una misma persona pueda estar en varios cursos.
@@ -205,7 +212,8 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
-app.use("/api", express.json({ limit: "64kb" }));
+const jsonSmall = express.json({ limit: "64kb" }), jsonSign = express.json({ limit: "600kb" });
+app.use("/api", (req, res, next) => (req.path === "/firma" ? jsonSign : jsonSmall)(req, res, next));
 app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60e3, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Demasiados intentos. Espera 15 minutos." } });
@@ -250,10 +258,11 @@ app.post("/api/register", registerLimiter, wrap(async (req, res) => {
   const hash = await bcrypt.hash(b.pin, 10);
   const r = await pool.query(`INSERT INTO workers(course,dni,name,company,email,pin_hash,consent_at,last_login) VALUES($1,$2,$3,$4,$5,$6,now(),now()) ON CONFLICT(course,dni) DO NOTHING RETURNING *`, [C.id, dni, name, company, email, hash]);
   if (!r.rows[0]) return res.status(409).json({ error: "Ya existe una persona dada de alta con este DNI/NIE. Usa «Acceder»." });
-  const data = enforce(C, merge(sanitize(C, {}), sanitize(C, b.progress))).data;
+  const inc = sanitize(C, b.progress); if (C.needSign) { inc.exam = null; delete inc.done.exam; }
+  const data = enforce(C, merge(sanitize(C, {}), inc)).data;
   await storeProgress(C, dni, data);
   await logConn(req, C.id, dni, "alta");
-  res.status(201).json({ token: sign({ t: "u", dni, c: C.id }, 24 * 30), user: userOut(r.rows[0]), progress: data });
+  res.status(201).json({ token: sign({ t: "u", dni, c: C.id }, 24 * 30), user: { ...userOut(r.rows[0]), firma: null }, progress: data });
 }));
 
 app.post("/api/login", loginLimiter, wrap(async (req, res) => {
@@ -265,13 +274,13 @@ app.post("/api/login", loginLimiter, wrap(async (req, res) => {
   if (!ok) return res.status(401).json({ error: "DNI/NIE o PIN incorrectos." });
   await pool.query("UPDATE workers SET last_login=now() WHERE course=$1 AND dni=$2", [C.id, dni]);
   await logConn(req, C.id, dni, "login");
-  res.json({ token: sign({ t: "u", dni, c: C.id }, 24 * 30), user: userOut(r.rows[0]), progress: await loadProgress(C, dni) });
+  res.json({ token: sign({ t: "u", dni, c: C.id }, 24 * 30), user: { ...userOut(r.rows[0]), firma: await firmaOf(C.id, dni) }, progress: await loadProgress(C, dni) });
 }));
 
 app.get("/api/me", needUser, wrap(async (req, res) => {
   const r = await pool.query("SELECT * FROM workers WHERE course=$1 AND dni=$2", [req.course, req.dni]);
   if (!r.rows[0]) return res.status(401).json({ error: "Usuario no encontrado." });
-  res.json({ user: userOut(r.rows[0]), progress: await loadProgress(req.C, req.dni) });
+  res.json({ user: { ...userOut(r.rows[0]), firma: await firmaOf(req.course, req.dni) }, progress: await loadProgress(req.C, req.dni) });
 }));
 
 const sessionLimiter = rateLimit({ windowMs: 60 * 60e3, limit: 30, standardHeaders: "draft-7", legacyHeaders: false });
@@ -291,12 +300,38 @@ app.put("/api/progress", needUser, wrap(async (req, res) => {
     const w = await client.query("SELECT 1 FROM workers WHERE course=$1 AND dni=$2", [C.id, req.dni]);
     if (!w.rows[0]) { await client.query("ROLLBACK"); return res.status(401).json({ error: "Usuario no encontrado." }); }
     const prev = enforce(C, sanitize(C, r.rows[0] ? r.rows[0].data : {})).data;
-    const { data, dropped } = enforce(C, merge(prev, sanitize(C, req.body && req.body.progress)));
+    const inc = sanitize(C, req.body && req.body.progress);
+    // En los cursos con firma, el examen final solo se admite si el trabajador ha firmado antes
+    if (C.needSign && inc.exam && !(await client.query("SELECT 1 FROM firmas WHERE course=$1 AND dni=$2", [C.id, req.dni])).rows[0]) { inc.exam = null; delete inc.done.exam; }
+    const { data, dropped } = enforce(C, merge(prev, inc));
     await client.query(PROG_UPSERT, progArgs(C, req.dni, data));
     await client.query("COMMIT");
     if (dropped.length) return res.status(409).json({ error: "Avance no permitido: hay que aprobar antes lo anterior.", rejected: dropped, progress: data });
     res.json({ progress: data });
   } catch (e) { await client.query("ROLLBACK").catch(() => {}); throw e; } finally { client.release(); }
+}));
+
+// Firma del trabajador antes del examen final (una sola vez)
+const signLimiter = rateLimit({ windowMs: 60 * 60e3, limit: 20, standardHeaders: "draft-7", legacyHeaders: false });
+app.post("/api/firma", signLimiter, needUser, wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!req.C.needSign) return res.status(400).json({ error: "Este curso no requiere firma." });
+  const sig = typeof b.signature === "string" ? b.signature : "";
+  const m = sig.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+  const buf = m ? Buffer.from(m[1], "base64") : null;
+  const centro = clean(b.centro, 120), localidad = clean(b.localidad, 80);
+  const bad = [];
+  if (b.info !== true) bad.push("confirmar que has recibido la información");
+  if (typeof b.medical !== "boolean") bad.push("indicar si autorizas o no la revisión médica");
+  if (centro.length < 3) bad.push("centro de trabajo");
+  if (localidad.length < 2) bad.push("localidad");
+  if (!buf || buf.length < 200 || buf.length > 400000 || buf.readUInt32BE(0) !== 0x89504e47) bad.push("firma");
+  if (bad.length) return res.status(400).json({ error: "Revisa: " + bad.join(", ") + "." });
+  const w = await pool.query("SELECT 1 FROM workers WHERE course=$1 AND dni=$2", [req.course, req.dni]);
+  if (!w.rows[0]) return res.status(401).json({ error: "Usuario no encontrado." });
+  const r = await pool.query(`INSERT INTO firmas(course,dni,medical,centro,localidad,signature,ip,user_agent) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(course,dni) DO NOTHING RETURNING medical, signed_at`,
+    [req.course, req.dni, b.medical, centro, localidad, sig, clientIp(req), clean(req.get("user-agent"), 200) || null]);
+  res.json({ firma: await firmaOf(req.course, req.dni), already: !r.rows[0] });
 }));
 
 app.delete("/api/me", needUser, wrap(async (req, res) => {
@@ -315,7 +350,8 @@ app.post("/api/admin/login", adminLimiter, (req, res) => {
 
 const LIST_SQL = `SELECT w.course,w.dni,w.name,w.company,w.email,w.created_at,w.last_login,
   coalesce(p.pct,0) pct,p.data,p.exam_ok,p.exam_n,coalesce(p.passed,false) passed,to_char(p.passed_at,'YYYY-MM-DD') passed_at,p.updated_at,coalesce(p.time_sec,0) time_sec,
-  (SELECT count(*)::int FROM sessions s WHERE s.course=w.course AND s.dni=w.dni) connections
+  (SELECT count(*)::int FROM sessions s WHERE s.course=w.course AND s.dni=w.dni) connections,
+  (SELECT json_build_object('at',f.signed_at,'medical',f.medical) FROM firmas f WHERE f.course=w.course AND f.dni=w.dni) firma
   FROM workers w LEFT JOIN progress p USING(course,dni) WHERE w.course=$1`;
 const KIND = { alta: "Alta", login: "Acceso (login)", sesion: "Sesión" };
 function rowOut(C, r) {
@@ -324,7 +360,7 @@ function rowOut(C, r) {
     timeSec: Math.max(r.time_sec || 0, d.timeSec || 0), pct: r.pct, examOk: r.exam_ok, examN: r.exam_n, passed: r.passed, passedAt: r.passed_at,
     modules: LESSONS.map((n, m) => ({ done: [...Array(n).keys()].filter(i => d.done[`${m}-${i}`]).length + (d.done[`${m}-final`] ? 1 : 0), total: n + 1, final: d.scores[`${m}-final`] ?? null })),
     scores: d.scores, timeByKey: d.timeByKey, attempts: d.attempts, connections: r.connections || 0,
-    attemptsTotal: Object.values(d.attempts).reduce((a, b) => a + b, 0) };
+    attemptsTotal: Object.values(d.attempts).reduce((a, b) => a + b, 0), firma: r.firma || null };
 }
 // Cursos disponibles y nº de personas en cada uno (para el selector del panel)
 app.get("/api/admin/courses", needAdmin, wrap(async (req, res) => {
@@ -344,6 +380,14 @@ app.get("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const c = await pool.query("SELECT at,kind,ip FROM sessions WHERE course=$1 AND dni=$2 ORDER BY at DESC LIMIT 200", [C.id, r.rows[0].dni]);
   res.json({ worker: { ...rowOut(C, r.rows[0]), connectionLog: c.rows.map(x => ({ at: x.at, ip: x.ip, tool: KIND[x.kind] || x.kind })) } });
 }));
+// Documentos firmados (entrega de información y revisión médica) de un trabajador
+app.get("/api/admin/workers/:dni/firma", needAdmin, wrap(async (req, res) => {
+  const C = COURSES[reqCourse(req)];
+  const r = await pool.query(`SELECT w.name,w.dni,w.company,f.medical,f.centro,f.localidad,f.signature,f.signed_at,f.ip FROM firmas f JOIN workers w USING(course,dni) WHERE f.course=$1 AND f.dni=$2`, [C.id, normDni(req.params.dni)]);
+  if (!r.rows[0]) return res.status(404).json({ error: "Este trabajador todavía no ha firmado." });
+  const x = r.rows[0];
+  res.json({ course: C.id, courseName: C.name, courseCode: C.code, name: x.name, dni: x.dni, company: x.company, medical: x.medical, centro: x.centro, localidad: x.localidad, signature: x.signature, signedAt: x.signed_at, ip: x.ip });
+}));
 // Trabajadores que han terminado el curso (examen final aprobado)
 // ?course=taf (por defecto, igual que antes) · ?course=ofi · ?course=hbd · ?course=bar · ?course=all (todos; id = «curso:DNI» salvo en taf, que mantiene el DNI)
 app.get("/api/admin/finalizados", needAdmin, wrap(async (req, res) => {
@@ -360,7 +404,7 @@ app.delete("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
 // Copia de seguridad completa (solo administración): todas las filas de workers, progress y sessions
 app.get("/api/admin/backup", needAdmin, wrap(async (req, res) => {
   const out = { at: new Date().toISOString() };
-  for (const t of ["workers", "progress", "sessions"]) out[t] = (await pool.query(`SELECT * FROM ${t}`)).rows;
+  for (const t of ["workers", "progress", "sessions", "firmas"]) out[t] = (await pool.query(`SELECT * FROM ${t}`)).rows;
   res.json(out);
 }));
 const fmtT = t => { const m = Math.floor((t || 0) / 60); return `${Math.floor(m / 60)} h ${m % 60} min`; };
