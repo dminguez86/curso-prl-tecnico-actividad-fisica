@@ -40,6 +40,16 @@ const COURSES = {
 // Las webs de cada curso siempre son orígenes permitidos (además de ALLOWED_ORIGINS)
 for (const c of Object.values(COURSES)) if (c.origin && !ORIGINS.includes(c.origin)) ORIGINS.push(c.origin);
 const DEFAULT_COURSE = "taf";
+// Títulos de los apartados de cada curso (para el informe del panel): meta.lt o courses/<id>-lt.json
+for (const C of Object.values(COURSES)) if (!C.meta.lt) { try { C.meta = { ...C.meta, lt: require(`./courses/${C.id}-lt.json`) }; } catch (e) { } }
+// Cursos sin alumnos en esta API (solo web) que salen en «Mis cursos» del panel. Para añadir un curso nuevo con API,
+// basta con registrarlo en COURSES; las claves de revisión van en la variable de entorno REVISION_TOKENS (JSON {"id":"clave"}).
+const EXTRA_COURSES = [
+  { id: "prses", name: "PRSES · Seguridad en estanterías metálicas", code: "PRSES", url: "https://curso-estanterias-prses.onrender.com", admin: null },
+  { id: "ruido", name: "El ruido en el trabajo", code: "RUIDO", url: "https://curso-ruido-prl.onrender.com", admin: null }
+];
+let REVISION_TOKENS = {};
+try { REVISION_TOKENS = JSON.parse(process.env.REVISION_TOKENS || "{}"); } catch (e) { console.warn("REVISION_TOKENS no es un JSON válido"); }
 const courseId = v => (typeof v === "string" && Object.prototype.hasOwnProperty.call(COURSES, v)) ? v : null;
 // Curso de la petición: cabecera X-Course, ?course= o body.course; si no, el curso de la web de origen; si no, «taf».
 function reqCourse(req) {
@@ -367,8 +377,15 @@ function rowOut(C, r) {
 app.get("/api/admin/courses", needAdmin, wrap(async (req, res) => {
   const r = await pool.query("SELECT course, count(*)::int n FROM workers GROUP BY course");
   const n = Object.fromEntries(r.rows.map(x => [x.course, x.n]));
-  res.json({ default: DEFAULT_COURSE, courses: Object.values(COURSES).map(C => ({ id: C.id, name: C.name, code: C.code, url: C.origin, titles: C.meta.titles, lessons: C.LESSONS, totMin: C.meta.tot, examN: C.EXAMN, workers: n[C.id] || 0 })) });
+  res.json({ default: DEFAULT_COURSE, courses: Object.values(COURSES).map(C => ({ id: C.id, name: C.name, code: C.code, url: C.origin, titles: C.meta.titles, lessons: C.LESSONS, totMin: C.meta.tot, examN: C.EXAMN, workers: n[C.id] || 0, needSign: !!C.needSign, puesto: C.puesto || null, meta: { titles: C.meta.titles, lt: C.meta.lt || null, lessons: C.LESSONS, lessonQ: C.meta.lessonQ, finalN: Array.isArray(C.meta.finalN) ? C.meta.finalN : C.LESSONS.map(() => FINALN), tot: C.meta.tot, examN: C.EXAMN } })) });
 }));
+// «Mis cursos»: enlaces del alumno, de revisión y del panel de cada curso (solo administración)
+app.get("/api/admin/cursos", needAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const rev = (id, url) => REVISION_TOKENS[id] ? url.replace(/\/$/, "") + "/?revision=" + encodeURIComponent(REVISION_TOKENS[id]) : null;
+  res.json({ cursos: Object.values(COURSES).map(C => ({ id: C.id, name: C.name, code: C.code, url: C.origin + "/", review: rev(C.id, C.origin), admin: C.origin + "/admin/", api: true }))
+    .concat(EXTRA_COURSES.map(c => ({ id: c.id, name: c.name, code: c.code, url: c.url + "/", review: rev(c.id, c.url), admin: c.admin, api: false }))) });
+});
 app.get("/api/admin/workers", needAdmin, wrap(async (req, res) => {
   const C = COURSES[reqCourse(req)];
   const r = await pool.query(LIST_SQL + " ORDER BY w.company, w.name", [C.id]);
@@ -425,7 +442,8 @@ app.get("/api/admin/export.csv", needAdmin, wrap(async (req, res) => {
 // ---------- estáticos: solo el curso y el panel ----------
 app.get(["/", "/index.html"], (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/admin", (req, res) => res.redirect(301, "/admin/"));
-app.get(["/admin/", "/admin/index.html"], (req, res) => res.sendFile(path.join(__dirname, "admin", "index.html")));
+// Panel de administración ÚNICO para todos los cursos (las páginas /admin/ de cada curso redirigen aquí)
+app.get(["/admin/", "/admin/index.html"], (req, res) => { res.set("Cache-Control", "no-cache"); res.sendFile(path.join(__dirname, "panel", "index.html")); });
 app.use((req, res) => res.status(404).json({ error: "No encontrado" }));
 
 init().then(() => app.listen(PORT, () => console.log("Escuchando en " + PORT))).catch(e => { console.error("Error iniciando BD", e); process.exit(1); });
