@@ -441,7 +441,7 @@ app.get("/api/admin/export.csv", needAdmin, wrap(async (req, res) => {
 
 // ---------- estáticos: solo el curso y el panel ----------
 app.get(["/", "/index.html"], (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-app.get("/admin", (req, res) => res.redirect(301, "/admin/"));
+app.get("/admin", (req, res, next) => req.path.endsWith("/") ? next() : res.redirect(301, "/admin/" + (req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "")));
 // Panel de administración ÚNICO para todos los cursos (las páginas /admin/ de cada curso redirigen aquí)
 app.get(["/admin/", "/admin/index.html"], (req, res) => { res.set("Cache-Control", "no-cache"); res.sendFile(path.join(__dirname, "panel", "index.html")); });
 app.use((req, res) => res.status(404).json({ error: "No encontrado" }));
