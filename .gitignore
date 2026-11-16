@@ -5,3 +5,4 @@ finalizados_notificados.json
 .admin_token
 finalizados_correo.json
 __pycache__
+.revision_tokens_env.txt
