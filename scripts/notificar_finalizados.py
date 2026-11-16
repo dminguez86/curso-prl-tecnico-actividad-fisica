@@ -7,7 +7,7 @@ sys.path.insert(0,os.path.join(DIR,'scripts'))
 API=os.environ.get('API','https://curso-prl-taf-api.onrender.com').rstrip('/')
 STATE=os.path.join(DIR,'finalizados_correo.json')
 OUT=os.environ.get('OUT_DIR','/workspace/finalizados')
-SIGN_FALLBACK={'ofi','fis'}
+SIGN_FALLBACK={'ofi','fis','cat'}
 def err(m,c=1): print(json.dumps({'error':m},ensure_ascii=False),file=sys.stderr);sys.exit(c)
 def req(path,data=None,tok=None,timeout=40):
     h={'Content-Type':'application/json'}
