@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<!--
+  PLANTILLA PROVISIONAL del certificado de aprovechamiento.
+  Pendiente del modelo definitivo que entregue David.
+
+  Cómo sustituirla: ver CERTIFICADO.md en la raíz del repositorio.
+  Conserva el contenedor .cert (297 mm × 210 mm, A4 apaisado) y los
+  marcadores {{logo}} {{nombre}} {{dni}} {{empresa}} {{curso}} {{codigo}}
+  {{horas}} {{fecha_realizacion}} {{nota}} {{contenidos_html}}
+  {{fecha_emision}} {{lugar}}.
+  No pongas nombres de personas firmantes; usa un cargo genérico.
+-->
+<head>
+<meta charset="utf-8">
+<title>Certificado de formación en PRL (plantilla provisional)</title>
+<style>
+@page{size:A4 landscape;margin:0}
+html,body{margin:0;padding:0;background:#fff}
+.cert{
+  width:297mm;height:210mm;padding:8mm 10mm;
+  box-sizing:border-box;position:relative;overflow:hidden;
+  font-family:Arial,Helvetica,sans-serif;color:#1d2b36;background:#fff;
+  display:flex;flex-direction:column;
+  border:3.5mm solid #0277ab;
+}
+.cert::after{
+  content:"";position:absolute;inset:2mm;border:1px solid #16B14C;pointer-events:none;
+}
+.cert::before{
+  content:"PROVISIONAL";position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%) rotate(-22deg);
+  font-size:38mm;font-weight:800;color:rgba(198,40,40,.07);
+  letter-spacing:.12em;white-space:nowrap;pointer-events:none;z-index:0;
+}
+.cert>*{position:relative;z-index:1}
+.prov{
+  background:#c62828;color:#fff;text-align:center;font-weight:800;
+  font-size:8.5pt;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 8px;margin:-2mm -4mm 5mm;flex:none;
+}
+.head{display:flex;align-items:center;gap:14px;margin-bottom:4mm}
+.head img{height:16mm;width:auto;background:#fff;padding:2px 4px;border-radius:4px}
+.head .brand{flex:1}
+.head .brand strong{display:block;color:#0277ab;font-size:16pt;letter-spacing:.04em}
+.head .brand span{color:#5b6b78;font-size:9.5pt}
+h1{
+  margin:0 0 4mm;text-align:center;color:#0277ab;
+  font-size:18pt;font-weight:800;line-height:1.2;letter-spacing:.02em;
+  text-transform:uppercase;
+}
+.lead{text-align:center;font-size:11pt;margin:0 0 1.5mm;color:#1d2b36}
+.nombre{
+  text-align:center;font-size:20pt;font-weight:800;color:#06476b;
+  margin:0 0 1.5mm;line-height:1.15;
+}
+.datos{text-align:center;font-size:10.5pt;margin:0 0 3.5mm;color:#1d2b36}
+.datos b{color:#06476b}
+.curso-box{
+  border:1px solid #d6e2ea;background:#f3f7fa;border-radius:6px;
+  padding:3mm 5mm;margin:0 0 3mm;text-align:center;
+}
+.curso-box .c-nom{font-size:13.5pt;font-weight:800;color:#0277ab;margin:0 0 1mm}
+.curso-box .c-meta{font-size:10pt;margin:0;color:#1d2b36}
+.legal{
+  text-align:center;font-size:9pt;color:#1d2b36;margin:0 0 3mm;line-height:1.35;
+}
+h2{font-size:9.5pt;color:#0277ab;margin:0 0 1.5mm;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.contenidos{flex:1;min-height:0;margin:0 0 3mm}
+.contenidos ul{
+  margin:0;padding:0 0 0 4.5mm;
+  columns:2;column-gap:8mm;
+  font-size:8.5pt;line-height:1.45;
+}
+.contenidos li{break-inside:avoid;margin:0 0 0.4mm}
+.pie{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  gap:12mm;margin-top:auto;padding-top:2mm;
+}
+.pie .emi{font-size:9.5pt;color:#1d2b36}
+.firma{text-align:center;min-width:70mm}
+.firma .linea{border-top:1px solid #1d2b36;margin:12mm 0 1.5mm;padding-top:1.5mm}
+.firma .cargo{font-size:9.5pt;font-weight:700}
+.firma .sello{font-size:8.5pt;color:#0277ab;font-weight:700}
+</style>
+</head>
+<body>
+<article class="cert">
+  <div class="prov">Plantilla provisional — pendiente del modelo definitivo</div>
+  <div class="head">
+    <img src="{{logo}}" alt="PREVIJOB">
+    <div class="brand">
+      <strong>PREVIJOB, S.L.</strong>
+      <span>Servicio de Prevención</span>
+    </div>
+  </div>
+  <h1>Certificado de formación en prevención de riesgos laborales</h1>
+  <p class="lead">Se certifica que</p>
+  <p class="nombre">{{nombre}}</p>
+  <p class="datos">DNI/NIE: <b>{{dni}}</b> &nbsp;·&nbsp; Empresa: <b>{{empresa}}</b></p>
+  <div class="curso-box">
+    <p class="c-nom">{{curso}}</p>
+    <p class="c-meta">Código: <b>{{codigo}}</b> &nbsp;·&nbsp; Duración: <b>{{horas}}</b><br>
+    Fecha de realización: <b>{{fecha_realizacion}}</b> &nbsp;·&nbsp; Nota del examen: <b>{{nota}}</b></p>
+  </div>
+  <p class="legal">Formación e información conforme a los arts. 18 y 19 de la Ley 31/1995 de Prevención de Riesgos Laborales.</p>
+  <div class="contenidos">
+    <h2>Contenidos</h2>
+    <ul>{{contenidos_html}}</ul>
+  </div>
+  <div class="pie">
+    <div class="emi">Expedido el {{fecha_emision}}{{lugar}}</div>
+    <div class="firma">
+      <div class="linea">
+        <div class="cargo">Técnico/a de PRL</div>
+        <div class="sello">PREVIJOB, S.L. – Servicio de Prevención</div>
+      </div>
+    </div>
+  </div>
+</article>
+</body>
+</html>

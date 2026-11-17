@@ -445,6 +445,7 @@ app.get(["/", "/index.html"], (req, res) => res.sendFile(path.join(__dirname, "i
 app.get("/admin", (req, res, next) => req.path.endsWith("/") ? next() : res.redirect(301, "/admin/" + (req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "")));
 // Panel de administración ÚNICO para todos los cursos (las páginas /admin/ de cada curso redirigen aquí)
 app.get(["/admin/", "/admin/index.html"], (req, res) => { res.set("Cache-Control", "no-cache"); res.sendFile(path.join(__dirname, "panel", "index.html")); });
+app.get("/admin/certificado-plantilla.html", (req, res) => { res.set("Cache-Control", "no-cache"); res.sendFile(path.join(__dirname, "panel", "certificado-plantilla.html")); });
 app.use((req, res) => res.status(404).json({ error: "No encontrado" }));
 
 init().then(() => app.listen(PORT, () => console.log("Escuchando en " + PORT))).catch(e => { console.error("Error iniciando BD", e); process.exit(1); });

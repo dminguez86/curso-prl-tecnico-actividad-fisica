@@ -7,7 +7,7 @@ Formación PRL (art. 19 Ley 31/1995) basada en la evaluación de riesgos del pue
 - **Curso**: https://curso-prl-tecnico-actividad-fisica.onrender.com (static site, sin cambios de URL).
 - **API + panel**: servicio web Node/Express `curso-prl-taf-api` (https://curso-prl-taf-api.onrender.com), plan Free, Frankfurt. `server.js`.
 - **BD**: Render Postgres Free `curso-prl-taf-db` (tablas `workers` y `progress`, creadas al arrancar).
-- **Panel**: https://curso-prl-tecnico-actividad-fisica.onrender.com/admin/ (contraseña en la variable `ADMIN_PASSWORD` del servicio; nunca en el repositorio). Sin certificado: el panel muestra APTO/NO APTO.
+- **Panel**: https://curso-prl-taf-api.onrender.com/admin/ (contraseña en la variable `ADMIN_PASSWORD` del servicio; nunca en el repositorio). En las filas APTO hay un botón para descargar el certificado de aprovechamiento (plantilla provisional; el modelo definitivo lo aportará David: ver `CERTIFICADO.md`).
 - **Avance secuencial** (cliente y servidor): cada lección exige aprobar el test de la anterior (70 %), el test de módulo todas sus lecciones, el módulo siguiente el test del anterior y el examen final todo lo anterior. El servidor responde 409 y descarta notas fuera de orden.
 - Alta con DNI/NIE único y PIN obligatorio (bcrypt); progreso fusionado en el servidor (nunca se pierde avance entre dispositivos); `localStorage` como caché y modo sin conexión.
 - Variables de entorno: `DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `ALLOWED_ORIGINS`, `NODE_VERSION`.
@@ -27,3 +27,8 @@ curl -s $API/api/admin/finalizados -H "Authorization: Bearer $TOKEN"
 ```
 
 El token dura 8 h. `check_finalizados.sh` lee `ADMIN_PASSWORD.txt`, espera hasta 90 s si el servicio está dormido, imprime en JSON solo los finalizados nuevos y los añade a `finalizados_notificados.json` (no versionado).
+
+
+## Certificado de aprovechamiento
+
+Plantilla provisional (A4 apaisado) en `src/certificado-plantilla.html`. Cómo sustituirla, cursos activos y envío al cliente: ver [`CERTIFICADO.md`](CERTIFICADO.md).
