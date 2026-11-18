@@ -1,50 +1,42 @@
-# Certificado de aprovechamiento (plantilla provisional)
+# Certificado de aprovechamiento
 
-El modelo definitivo lo aportará David. Hasta entonces, el panel y el aviso de finalizados usan una **plantilla provisional**, marcada como tal en el propio PDF, fácil de sustituir sin tocar el resto del sistema.
+Plantilla según el modelo de David Minguez Motos (PREVIJOB, S.L.), A4 vertical, en `src/certificado-plantilla.html`. Incluye su firma y sello (`src/firma-sello.png`) y el logotipo del certificado (`src/logo-certificado.png`).
 
-## Cómo sustituir la plantilla
+## Cómo sustituir la plantilla o la firma
 
-1. Edita `src/certificado-plantilla.html` con el nuevo diseño (A4 apaisado).
-2. Conserva el contenedor raíz con clase `cert` (297 mm × 210 mm) y estos marcadores:
+1. Edita `src/certificado-plantilla.html` (A4 vertical, contenedor `.cert` de 210 mm × 297 mm).
+2. Conserva estos marcadores:
 
    | Marcador | Contenido |
    |---|---|
-   | `{{logo}}` | Imagen del logotipo (data-URI o URL; no escapar) |
-   | `{{nombre}}` | Nombre del alumno |
-   | `{{dni}}` | DNI/NIE |
-   | `{{empresa}}` | Empresa |
-   | `{{curso}}` | Nombre del curso |
-   | `{{codigo}}` | Código del curso (p. ej. PRL-CAT) |
-   | `{{horas}}` | Duración, a partir de `meta.tot` (minutos) |
-   | `{{fecha_realizacion}}` | Fecha en que quedó APTO |
-   | `{{nota}}` | Nota del examen final |
-   | `{{contenidos_html}}` | Lista `<li>…</li>` con los títulos de las lecciones (ya escapada) |
-   | `{{fecha_emision}}` | Fecha de emisión del PDF |
-   | `{{lugar}}` | Lugar de emisión (hoy vacío; no se inventa una ciudad) |
+   | `{{logo}}` | Logotipo (data-URI) |
+   | `{{firma_sello}}` | Firma y sello de David (data-URI) |
+   | `{{lugar}}` | Lugar de emisión (Tarragona) |
+   | `{{fecha_emision_larga}}` | «martes, 17 de noviembre de 2026» |
+   | `{{nombre}}` {{dni}} | Alumno |
+   | `{{empresa}}` | Razón social (si hay equivalencia en `courses/<id>-cert.json`) |
+   | `{{empresa_nif_html}}` | `, con NIF …` o vacío |
+   | `{{accion_formativa}}` | Título de la acción (p. ej. RIESGOS ESPECIFICOS DE TRABAJOS DE CATERING) |
+   | `{{contenidos_html}}` | Párrafos `.ln` con el temario del certificado |
+   | `{{horas}}` | Duración en horas (sin la «h.»; sale en el texto «de 1h.») |
+   | `{{fecha_realizacion}}` | Fecha en que quedó APTO (dd/mm/aaaa) |
+   | `{{firmante}}` {{cargo}} | «David Minguez Motos» / «Tecnico superior PRL» |
 
-   Los textos se escapan solos, salvo `{{logo}}` y `{{contenidos_html}}`.
-   No pongas nombres de personas firmantes; deja un cargo genérico («Técnico/a de PRL»).
-3. Regenera el panel publicado:
+3. Si cambias la firma o el logo, sustituye `src/firma-sello.png` o `src/logo-certificado.png`.
+4. Regenera el panel:
 
    ```bash
    python3 scripts/build_panel.py
    ```
 
-   Copia `src/certificado-plantilla.html` → `panel/certificado-plantilla.html` e inyecta el logo en `panel/index.html`.
-4. Commit y push. Render actualiza el panel único (`/admin/`).
+5. Commit y push. Render actualiza el panel único (`/admin/`).
 
-La función que rellena la plantilla y genera el PDF está en `src/panel.html` (`certificado()`). Solo hace falta tocarla si cambian los datos de entrada, no el diseño.
+El temario, las horas oficiales del certificado y la equivalencia de empresa/NIF van en `courses/<id>-cert.json` (hoy está el de cátering). Si no hay fichero, se usan el nombre del curso, las lecciones y `meta.tot`.
 
-## Cursos y envío al cliente
+## Envío al cliente y marca en el panel
 
-El fichero `certificados_destinatarios.json` indica en qué cursos está activo el certificado y a qué correo del cliente se mandará (cuando se configure). Hoy:
-
-```json
-{ "cat": "", "ofi": "" }
-```
-
-- La clave presente = curso con certificado activo (se genera `certificado.pdf` al avisar un finalizado y el botón aparece en el panel para cualquier APTO).
-- El valor es el correo del cliente. Si está vacío, **no se envía** al cliente.
-- El aviso a Previjob (`--marcar`) y el envío al cliente (`--marcar-cliente`) tienen estado independiente (`finalizados_correo.json` y `finalizados_cliente.json`).
-
-El script `notificar_finalizados.sh` no manda correos; solo prepara los PDF y el JSON. El envío lo hace la rutina, cuando se le indique.
+- Destinatarios: `certificados_destinatarios.json` (`cat`: un correo; `ofi`: Lorena Segura y Anna Forgàs).
+- El estado «certificado enviado» vive en la API (`workers.cert_at`, `workers.cert_origen`: `manual` o `automatico`). Se ve en la columna «Certificado» del panel, con filtro, y se puede marcar o desmarcar a mano (con confirmación).
+- `--marcar-cliente <id>` lo graba en la API con origen `automatico`. Si ya está marcado (también a mano), no se vuelve a enviar.
+- El correo al cliente debe llevar **siempre 3 PDF**: certificado generado, entrega de información firmada y ofrecimiento firmado de la revisión médica. Van en `adjuntos_cliente`. Si falta alguno, `cliente_pendiente` es `false` y aparece `cliente_bloqueo` con el motivo.
+- El script no manda correos; el envío lo hará la rutina cuando David dé el visto bueno a la plantilla.

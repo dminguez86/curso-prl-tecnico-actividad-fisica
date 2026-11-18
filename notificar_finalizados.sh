@@ -8,9 +8,9 @@
 # NUNCA marca como notificado por sí solo ni envía correos:
 #   ./notificar_finalizados.sh                   -> lista pendientes + PDF (no marca nada)
 #   ./notificar_finalizados.sh --marcar <id>     -> marca <id> (p. ej. bar:Z0292897C) tras enviar el correo a Previjob
-#   ./notificar_finalizados.sh --marcar-cliente <id> -> marca el envío del certificado al cliente
-#                                                   (finalizados_cliente.json, independiente del aviso a Previjob).
-#                                                   Si el correo del cliente está vacío, no se marca ni se debe enviar.
+#   ./notificar_finalizados.sh --marcar-cliente <id> -> marca el envío en la API (origen automático).
+#                                                   Independiente del aviso a Previjob. Si el correo está vacío, no se marca.
+#                                                   El envío al cliente exige 3 PDF: certificado, entrega de información y revisión médica.
 #   ./notificar_finalizados.sh --dry-run [--forzar <id>]  -> prueba; con --forzar incluye un alumno ya notificado
 #   ./notificar_finalizados.sh --inicializar     -> marca como notificados todos los finalizados actuales
 #   --sin-pdf                                    -> solo el JSON, sin generar PDF

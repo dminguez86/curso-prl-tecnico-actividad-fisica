@@ -34,7 +34,14 @@ def main():
     if not TPL_SRC.exists():
         sys.exit("Falta " + str(TPL_SRC))
     shutil.copyfile(TPL_SRC, TPL_DST)
-    print("Actualizados:", DST.relative_to(ROOT), "y", TPL_DST.relative_to(ROOT))
+    copied=["panel/index.html", "panel/certificado-plantilla.html"]
+    for name in ("firma-sello.png", "logo-certificado.png"):
+        src, dst = ROOT/"src"/name, ROOT/"panel"/name
+        if not src.exists():
+            sys.exit("Falta "+str(src))
+        shutil.copyfile(src, dst)
+        copied.append("panel/"+name)
+    print("Actualizados:", ", ".join(copied))
 
 if __name__ == "__main__":
     main()

@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """Finalizados de TODOS los cursos del panel único, con los PDF listos para enviar por correo.
 Ver notificar_finalizados.sh para el uso. Estado propio: finalizados_correo.json (no toca finalizados_notificados.json).
-El envío del certificado al cliente se marca por separado en finalizados_cliente.json (--marcar-cliente)."""
+El envío del certificado al cliente se marca en la API (--marcar-cliente, origen automático), no en un JSON local."""
 import json,os,sys,time,re,unicodedata,tempfile,urllib.request,urllib.error,argparse,shutil
 DIR=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0,os.path.join(DIR,'scripts'))
 API=os.environ.get('API','https://curso-prl-taf-api.onrender.com').rstrip('/')
 STATE=os.path.join(DIR,'finalizados_correo.json')
-STATE_CLIENTE=os.path.join(DIR,'finalizados_cliente.json')
 CERT_CFG=os.path.join(DIR,'certificados_destinatarios.json')
 OUT=os.environ.get('OUT_DIR','/workspace/finalizados')
 SIGN_FALLBACK={'ofi','fis','cat'}
 def err(m,c=1): print(json.dumps({'error':m},ensure_ascii=False),file=sys.stderr);sys.exit(c)
-def req(path,data=None,tok=None,timeout=40):
+def req(path,data=None,tok=None,timeout=40,course=None,method=None):
     h={'Content-Type':'application/json'}
     if tok: h['Authorization']='Bearer '+tok
-    r=urllib.request.Request(API+path,data=json.dumps(data).encode() if data is not None else None,headers=h)
+    if course: h['X-Course']=course
+    body=None if data is None else json.dumps(data).encode()
+    m=method or ('POST' if body is not None else 'GET')
+    r=urllib.request.Request(API+path,data=body,headers=h,method=m)
     return json.load(urllib.request.urlopen(r,timeout=timeout))
 def wake():
     t=time.time()+120
@@ -43,22 +45,23 @@ def load_state(path=STATE):
 def save_state(st,path=STATE):
     fd,tmp=tempfile.mkstemp(dir=DIR);os.close(fd)
     json.dump(st,open(tmp,'w'),ensure_ascii=False,indent=2);os.replace(tmp,path)
+def emails_of(v):
+    if isinstance(v,dict): v=v.get('email') or v.get('emails') or ''
+    if isinstance(v,list): return [str(x).strip() for x in v if str(x).strip()]
+    s=(v or '').strip() if v is not None else ''
+    return [s] if s else []
 def load_cert_cfg():
-    """Cursos con certificado activo: claves de certificados_destinatarios.json. El valor es el correo del cliente (vacío = no enviar)."""
-    try:
-        j=json.load(open(CERT_CFG))
-    except Exception:
-        return {}
+    """Cursos con certificado activo: claves de certificados_destinatarios.json. Valor = correo o lista de correos del cliente (vacío = no enviar)."""
+    try: j=json.load(open(CERT_CFG))
+    except Exception: return {}
     if not isinstance(j,dict): return {}
-    out={}
-    for k,v in j.items():
-        if isinstance(v,dict): out[k]=(v.get('email') or '').strip()
-        else: out[k]=(v or '').strip() if v is not None else ''
-    return out
+    return {k:{'emails':emails_of(v)} for k,v in j.items()}
 def wid(w): return f"{w['curso']}:{w['dni']}"
 def fetch(tok):
     F=req('/api/admin/finalizados?course=all',tok=tok)['finalizados']
-    for w in F: w['dni']=w['id'].split(':')[-1]; w['id']=wid(w)
+    for w in F:
+        w['dni']=w['id'].split(':')[-1]; w['id']=wid(w)
+        w['cert_estado']=w.get('certificado') if isinstance(w.get('certificado'),dict) else None
     return F
 def safe(n):
     n=unicodedata.normalize('NFKD',n).encode('ascii','ignore').decode()
@@ -81,7 +84,7 @@ def generate(tok,items,cfg):
             b.wait('CUR===%s&&W.length&&W[0].course===%s'%(json.dumps(c),json.dumps(c)),90)
             row=b.js('(()=>{const x=W.find(v=>v.dni===%s);return x?{firma:x.firma,passed:!!x.passed}:null})()'%json.dumps(w['dni']))
             if not row: w['error']='no aparece en el panel';continue
-            nm=safe(w['nombre']);att=[];nd=[];cert=None
+            nm=safe(w['nombre']);att=[];nd=[];paths={'cert':None,'info':None,'med':None}
             jobs=[('informe','Informe_curso_%s.pdf'%nm,'informe(%s,document.createElement("button"))')]
             sign=courses.get(c,{}).get('needSign',c in SIGN_FALLBACK)
             if sign and row['firma']:
@@ -105,23 +108,42 @@ def generate(tok,items,cfg):
                     time.sleep(.5)
                 if got:
                     dst=os.path.join(d,fn);shutil.move(os.path.join(tmpdl,got),dst)
-                    if k=='cert': cert=dst
-                    else: att.append(dst)
+                    if k in paths: paths[k]=dst
+                    if k!='cert': att.append(dst)
                 else: w.setdefault('errores',[]).append(f"{fn}: {b.js('window.__alert') or 'no se descargó'}")
-            w['adjuntos']=att;w['no_disponibles']=nd;w['carpeta']=d;w['certificado']=cert
+            w['adjuntos']=att;w['no_disponibles']=nd;w['carpeta']=d
+            w['cert_pdf']=paths['cert'];w['info_pdf']=paths['info'];w['med_pdf']=paths['med']
             if c in courses: w['curso_nombre']=courses[c]['name']
     finally: b.close();shutil.rmtree(tmpdl,ignore_errors=True)
 
-def out(w,cfg,known_cliente):
+def pack_cliente(w):
+    cert,info,med=w.get('cert_pdf'),w.get('info_pdf'),w.get('med_pdf')
+    if not info:
+        info=next((p for p in w.get('adjuntos',[]) if os.path.basename(p).startswith('Entrega_informacion_')),None)
+    if not med:
+        med=next((p for p in w.get('adjuntos',[]) if os.path.basename(p).startswith('Revision_medica_')),None)
+    faltan=[]
+    if not cert: faltan.append('el certificado de aprovechamiento')
+    if not info: faltan.append('la entrega de información firmada')
+    if not med: faltan.append('el ofrecimiento firmado de la revisión médica')
+    return {'certificado':cert,'entrega_informacion':info,'revision_medica':med}, faltan
+
+def out(w,cfg):
     cid=w['curso']
     activo=cid in cfg
-    email=cfg.get(cid,'') if activo else None
+    emails=cfg.get(cid,{}).get('emails',[]) if activo else []
+    pack,faltan=pack_cliente(w)
+    ya=bool(w.get('cert_estado') and w['cert_estado'].get('at'))
+    pendiente=bool(activo and emails and not ya and not faltan and not w.get('error'))
     d={'id':w['id'],'nombre':w['nombre'],'dni':w['dni'],'empresa':w['empresa'],'curso':w.get('curso_nombre') or w['curso'],'curso_id':w['curso'],
-       'fecha_realizacion':fdmy(w['fecha_finalizacion']),'nota':(f"{w['nota']} ({w['nota_pct']} %)" if w.get('nota') and 'None' not in w['nota'] else None),
+       'fecha_realizacion':fdmy(w['fecha_finalizacion']),'nota':(f"{w['nota']} ({w['nota_pct']} %)" if w.get('nota') and 'None' not in str(w['nota']) else None),
        'adjuntos':w.get('adjuntos',[]),'no_disponibles':w.get('no_disponibles',[]),
-       'cliente_email':email,
-       'certificado':w.get('certificado'),
-       'cliente_pendiente':bool(activo and email and w['id'] not in known_cliente)}
+       'cliente_email':(emails[0] if len(emails)==1 else emails) if activo else None,
+       'certificado':pack['certificado'],
+       'adjuntos_cliente':pack,
+       'cliente_pendiente':pendiente,
+       'certificado_estado':w.get('cert_estado')}
+    if faltan and activo: d['cliente_bloqueo']='Faltan documentos para el envío al cliente: '+', '.join(faltan)+'.'
     if w.get('errores'): d['errores']=w['errores']
     if w.get('error'): d['error']=w['error']
     return d
@@ -145,7 +167,7 @@ def main():
     a=ap.parse_args()
     if a.forzar and not a.dry_run: err('--forzar solo se puede usar con --dry-run')
     wake();tok=login();F=fetch(tok);st=load_state();known={x['id'] for x in st}
-    cfg=load_cert_cfg();st_cli=load_state(STATE_CLIENTE);known_cli={x['id'] for x in st_cli}
+    cfg=load_cert_cfg()
     if a.inicializar:
         new=[{'id':w['id'],'nombre':w['nombre'],'curso':w['curso'],'fecha_finalizacion':w['fecha_finalizacion'],'marcado':time.strftime('%Y-%m-%d %H:%M'),'motivo':'inicial (terminado antes de crear la rutina)'} for w in F if w['id'] not in known]
         if not a.dry_run: save_state(st+new)
@@ -156,12 +178,18 @@ def main():
         w=next((x for x in F if x['id']==a.marcar_cliente),None)
         if not w: err('no hay ningún finalizado con id '+a.marcar_cliente)
         if w['curso'] not in cfg: err('el curso %s no tiene el certificado activado'%w['curso'])
-        email=cfg.get(w['curso'],'')
-        if not email: err('el curso %s no tiene correo del cliente; no se marca el envío'%w['curso'])
-        marcar(F,st_cli,STATE_CLIENTE,a.marcar_cliente,'certificado enviado al cliente',{'cliente_email':email});return
+        emails=cfg[w['curso']]['emails']
+        if not emails: err('el curso %s no tiene correo del cliente; no se marca el envío'%w['curso'])
+        if w.get('cert_estado') and w['cert_estado'].get('at'):
+            print(json.dumps({'marcado':a.marcar_cliente,'ya_estaba':True,'origen':w['cert_estado'].get('origen'),'via':'api'},ensure_ascii=False));return
+        try:
+            j=req('/api/admin/workers/'+w['dni']+'/certificado',{'origen':'automatico'},tok=tok,course=w['curso'])
+        except urllib.error.HTTPError as e:
+            err('no se pudo marcar en la API (HTTP %s)'%e.code)
+        print(json.dumps({'marcado':a.marcar_cliente,'ya_estaba':bool(j.get('ya_estaba')),'via':'api','origen':'automatico','certificado':j.get('certificado')},ensure_ascii=False));return
     pend=[w for w in F if w['id'] not in known or w['id'] in a.forzar]
     for f in a.forzar:
         if not any(w['id']==f for w in F): err('no hay ningún finalizado con id '+f)
     if pend and not a.sin_pdf: generate(tok,pend,cfg)
-    print(json.dumps([out(w,cfg,known_cli) for w in pend],ensure_ascii=False,indent=2))
+    print(json.dumps([out(w,cfg) for w in pend],ensure_ascii=False,indent=2))
 main()

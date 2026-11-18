@@ -1,0 +1,40 @@
+{
+  "accion_formativa": "RIESGOS ESPECIFICOS DE TRABAJOS DE CATERING",
+  "horas": "1",
+  "contenidos": [
+    "Definición del modelo organizativo.",
+    "Accidente/Acto inseguro",
+    "Orden y limpieza.",
+    "- Riesgos específicos en trabajos de hostelería:",
+    "- Caídas al mismo nivel",
+    "- Riesgos en el uso de herramientas de corte (cuchillos, y similares)",
+    "- Riesgos específicos de tareas de cocina y camarero",
+    "- Golpes contra elementos inmóviles.",
+    "- Cortes y golpes en la manipulación de material y equipos",
+    "- Riesgos en el uso de equipos de trabajo específicos de hostelería.",
+    "Cafeteras, lavavajillas y electrodomésticos",
+    "- Riesgos derivados de equipos de cocina.",
+    "- Contacto eléctrico. Directos e indirectos",
+    "- Contacto térmico.",
+    "- Manipulación manual de cargas.",
+    "- Fatiga postural, trabajo con bipedestación continuada.",
+    "- Acceso a cámaras de refrigeración, consejos de seguridad.",
+    "- Exposición a productos químicos de limpieza o lavavajillas",
+    "Equipos de protección individual, uso seguro.",
+    "Coordinación de actividades preventivas.",
+    "Accidentes \"in itinere\" e \"inmisión\".",
+    "Consejos de seguridad.",
+    "Emergencias, incendios y primeros auxilios.",
+    "Riesgos psicosociales."
+  ],
+  "empresas": {
+    "Original Catering": {
+      "nombre": "MARGER 2010, SL",
+      "nif": "B65269862"
+    },
+    "MARGER 2010, SL": {
+      "nombre": "MARGER 2010, SL",
+      "nif": "B65269862"
+    }
+  }
+}

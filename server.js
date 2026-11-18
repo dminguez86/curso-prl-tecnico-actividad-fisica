@@ -43,6 +43,13 @@ for (const c of Object.values(COURSES)) if (c.origin && !ORIGINS.includes(c.orig
 const DEFAULT_COURSE = "taf";
 // Títulos de los apartados de cada curso (para el informe del panel): meta.lt o courses/<id>-lt.json
 for (const C of Object.values(COURSES)) if (!C.meta.lt) { try { C.meta = { ...C.meta, lt: require(`./courses/${C.id}-lt.json`) }; } catch (e) { } }
+function loadCertMeta(id) {
+  try {
+    const j = require(`./courses/${id}-cert.json`);
+    return { accionFormativa: j.accion_formativa || null, horas: j.horas != null ? String(j.horas) : null, contenidos: Array.isArray(j.contenidos) ? j.contenidos : null, empresas: j.empresas || null };
+  } catch (e) { return null; }
+}
+for (const C of Object.values(COURSES)) C.certificado = loadCertMeta(C.id);
 // Cursos sin alumnos en esta API (solo web) que salen en «Mis cursos» del panel. Para añadir un curso nuevo con API,
 // basta con registrarlo en COURSES; las claves de revisión van en la variable de entorno REVISION_TOKENS (JSON {"id":"clave"}).
 const EXTRA_COURSES = [
@@ -93,6 +100,9 @@ async function init() {
     medical boolean NOT NULL, centro varchar(120), localidad varchar(80),
     signature text NOT NULL, signed_at timestamptz NOT NULL DEFAULT now(), ip text, user_agent text,
     PRIMARY KEY(course, dni), FOREIGN KEY(course, dni) REFERENCES workers(course, dni) ON DELETE CASCADE)`);
+  // Estado del certificado de aprovechamiento (quién lo marcó y cuándo). Solo ADD COLUMN, no se tocan filas existentes.
+  await pool.query(`ALTER TABLE workers ADD COLUMN IF NOT EXISTS cert_at timestamptz`);
+  await pool.query(`ALTER TABLE workers ADD COLUMN IF NOT EXISTS cert_origen varchar(16)`);
 }
 const firmaOf = async (course, dni) => { const r = await pool.query("SELECT medical, signed_at FROM firmas WHERE course=$1 AND dni=$2", [course, dni]); return r.rows[0] ? { at: r.rows[0].signed_at, medical: r.rows[0].medical } : null; };
 // Migración multi-curso (idempotente, en una transacción): añade la columna «course» (por defecto 'taf', así
@@ -362,6 +372,7 @@ app.post("/api/admin/login", adminLimiter, (req, res) => {
 
 const LIST_SQL = `SELECT w.course,w.dni,w.name,w.company,w.email,w.created_at,w.last_login,
   coalesce(p.pct,0) pct,p.data,p.exam_ok,p.exam_n,coalesce(p.passed,false) passed,to_char(p.passed_at,'YYYY-MM-DD') passed_at,p.updated_at,coalesce(p.time_sec,0) time_sec,
+  w.cert_at,w.cert_origen,
   (SELECT count(*)::int FROM sessions s WHERE s.course=w.course AND s.dni=w.dni) connections,
   (SELECT json_build_object('at',f.signed_at,'medical',f.medical) FROM firmas f WHERE f.course=w.course AND f.dni=w.dni) firma
   FROM workers w LEFT JOIN progress p USING(course,dni) WHERE w.course=$1`;
@@ -372,13 +383,14 @@ function rowOut(C, r) {
     timeSec: Math.max(r.time_sec || 0, d.timeSec || 0), pct: r.pct, examOk: r.exam_ok, examN: r.exam_n, passed: r.passed, passedAt: r.passed_at,
     modules: LESSONS.map((n, m) => ({ done: [...Array(n).keys()].filter(i => d.done[`${m}-${i}`]).length + (d.done[`${m}-final`] ? 1 : 0), total: n + 1, final: d.scores[`${m}-final`] ?? null })),
     scores: d.scores, timeByKey: d.timeByKey, attempts: d.attempts, connections: r.connections || 0,
-    attemptsTotal: Object.values(d.attempts).reduce((a, b) => a + b, 0), firma: r.firma || null };
+    attemptsTotal: Object.values(d.attempts).reduce((a, b) => a + b, 0), firma: r.firma || null,
+    certificado: r.cert_at ? { at: r.cert_at, origen: r.cert_origen || null } : null };
 }
 // Cursos disponibles y nº de personas en cada uno (para el selector del panel)
 app.get("/api/admin/courses", needAdmin, wrap(async (req, res) => {
   const r = await pool.query("SELECT course, count(*)::int n FROM workers GROUP BY course");
   const n = Object.fromEntries(r.rows.map(x => [x.course, x.n]));
-  res.json({ default: DEFAULT_COURSE, courses: Object.values(COURSES).map(C => ({ id: C.id, name: C.name, code: C.code, url: C.origin, titles: C.meta.titles, lessons: C.LESSONS, totMin: C.meta.tot, examN: C.EXAMN, workers: n[C.id] || 0, needSign: !!C.needSign, puesto: C.puesto || null, meta: { titles: C.meta.titles, lt: C.meta.lt || null, lessons: C.LESSONS, lessonQ: C.meta.lessonQ, finalN: Array.isArray(C.meta.finalN) ? C.meta.finalN : C.LESSONS.map(() => FINALN), tot: C.meta.tot, examN: C.EXAMN } })) });
+  res.json({ default: DEFAULT_COURSE, courses: Object.values(COURSES).map(C => ({ id: C.id, name: C.name, code: C.code, url: C.origin, titles: C.meta.titles, lessons: C.LESSONS, totMin: C.meta.tot, examN: C.EXAMN, workers: n[C.id] || 0, needSign: !!C.needSign, puesto: C.puesto || null, certificado: C.certificado, meta: { titles: C.meta.titles, lt: C.meta.lt || null, lessons: C.LESSONS, lessonQ: C.meta.lessonQ, finalN: Array.isArray(C.meta.finalN) ? C.meta.finalN : C.LESSONS.map(() => FINALN), tot: C.meta.tot, examN: C.EXAMN } })) });
 }));
 // «Mis cursos»: enlaces del alumno, de revisión y del panel de cada curso (solo administración)
 app.get("/api/admin/cursos", needAdmin, (req, res) => {
@@ -411,10 +423,31 @@ app.get("/api/admin/workers/:dni/firma", needAdmin, wrap(async (req, res) => {
 // ?course=taf (por defecto, igual que antes) · ?course=ofi · ?course=hbd · ?course=bar · ?course=fis · ?course=cat · ?course=all (todos; id = «curso:DNI» salvo en taf, que mantiene el DNI)
 app.get("/api/admin/finalizados", needAdmin, wrap(async (req, res) => {
   const all = req.query.course === "all", C = COURSES[reqCourse(req)];
-  const r = await pool.query(`SELECT w.course,w.dni,w.name,w.company,p.exam_ok,p.exam_n,to_char(p.passed_at,'YYYY-MM-DD') passed_at
+  const r = await pool.query(`SELECT w.course,w.dni,w.name,w.company,p.exam_ok,p.exam_n,to_char(p.passed_at,'YYYY-MM-DD') passed_at,w.cert_at,w.cert_origen
     FROM workers w JOIN progress p USING(course,dni) WHERE p.passed AND ($1::text IS NULL OR w.course=$1) ORDER BY p.passed_at, w.name`, [all ? null : C.id]);
   res.json({ finalizados: r.rows.map(x => ({ id: x.course === DEFAULT_COURSE ? x.dni : `${x.course}:${x.dni}`, curso: x.course, curso_nombre: COURSES[x.course] ? COURSES[x.course].name : x.course,
-    nombre: x.name, empresa: x.company, nota: `${x.exam_ok}/${x.exam_n}`, nota_pct: Math.round(x.exam_ok / x.exam_n * 100), fecha_finalizacion: x.passed_at })) });
+    nombre: x.name, empresa: x.company, nota: `${x.exam_ok}/${x.exam_n}`, nota_pct: Math.round(x.exam_ok / x.exam_n * 100), fecha_finalizacion: x.passed_at,
+    certificado: x.cert_at ? { at: x.cert_at, origen: x.cert_origen || null } : null })) });
+}));
+app.post("/api/admin/workers/:dni/certificado", needAdmin, wrap(async (req, res) => {
+  const C = COURSES[reqCourse(req)], dni = normDni(req.params.dni);
+  const r = await pool.query("SELECT w.dni, coalesce(p.passed,false) passed, w.cert_at, w.cert_origen FROM workers w LEFT JOIN progress p USING(course,dni) WHERE w.course=$1 AND w.dni=$2", [C.id, dni]);
+  if (!r.rows[0]) return res.status(404).json({ error: "No encontrado" });
+  if (!r.rows[0].passed) return res.status(400).json({ error: "Solo se puede certificar a un alumno APTO." });
+  const origen = req.body && req.body.origen === "automatico" ? "automatico" : "manual";
+  let at = new Date();
+  if (req.body && req.body.at) { const d = new Date(req.body.at); if (!isNaN(d.getTime())) at = d; }
+  if (r.rows[0].cert_at && !(req.body && req.body.forzar)) {
+    return res.json({ ok: true, ya_estaba: true, certificado: { at: r.rows[0].cert_at, origen: r.rows[0].cert_origen || null } });
+  }
+  await pool.query("UPDATE workers SET cert_at=$3, cert_origen=$4 WHERE course=$1 AND dni=$2", [C.id, dni, at, origen]);
+  res.json({ ok: true, ya_estaba: false, certificado: { at, origen } });
+}));
+app.delete("/api/admin/workers/:dni/certificado", needAdmin, wrap(async (req, res) => {
+  const C = COURSES[reqCourse(req)], dni = normDni(req.params.dni);
+  const r = await pool.query("UPDATE workers SET cert_at=NULL, cert_origen=NULL WHERE course=$1 AND dni=$2 RETURNING dni", [C.id, dni]);
+  if (!r.rowCount) return res.status(404).json({ error: "No encontrado" });
+  res.json({ ok: true, certificado: null });
 }));
 app.delete("/api/admin/workers/:dni", needAdmin, wrap(async (req, res) => {
   const r = await pool.query("DELETE FROM workers WHERE course=$1 AND dni=$2", [reqCourse(req), normDni(req.params.dni)]);
@@ -446,6 +479,8 @@ app.get("/admin", (req, res, next) => req.path.endsWith("/") ? next() : res.redi
 // Panel de administración ÚNICO para todos los cursos (las páginas /admin/ de cada curso redirigen aquí)
 app.get(["/admin/", "/admin/index.html"], (req, res) => { res.set("Cache-Control", "no-cache"); res.sendFile(path.join(__dirname, "panel", "index.html")); });
 app.get("/admin/certificado-plantilla.html", (req, res) => { res.set("Cache-Control", "no-cache"); res.sendFile(path.join(__dirname, "panel", "certificado-plantilla.html")); });
+app.get("/admin/firma-sello.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(path.join(__dirname, "panel", "firma-sello.png")); });
+app.get("/admin/logo-certificado.png", (req, res) => { res.set("Cache-Control", "public, max-age=86400"); res.sendFile(path.join(__dirname, "panel", "logo-certificado.png")); });
 app.use((req, res) => res.status(404).json({ error: "No encontrado" }));
 
 init().then(() => app.listen(PORT, () => console.log("Escuchando en " + PORT))).catch(e => { console.error("Error iniciando BD", e); process.exit(1); });

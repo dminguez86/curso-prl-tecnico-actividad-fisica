@@ -1,121 +1,71 @@
 <!DOCTYPE html>
 <html lang="es">
 <!--
-  PLANTILLA PROVISIONAL del certificado de aprovechamiento.
-  Pendiente del modelo definitivo que entregue David.
+  Plantilla del certificado de aprovechamiento, según el modelo de David Minguez Motos
+  (PREVIJOB, S.L.). A4 vertical. Cómo sustituirla: ver CERTIFICADO.md.
 
-  Cómo sustituirla: ver CERTIFICADO.md en la raíz del repositorio.
-  Conserva el contenedor .cert (297 mm × 210 mm, A4 apaisado) y los
-  marcadores {{logo}} {{nombre}} {{dni}} {{empresa}} {{curso}} {{codigo}}
-  {{horas}} {{fecha_realizacion}} {{nota}} {{contenidos_html}}
-  {{fecha_emision}} {{lugar}}.
-  No pongas nombres de personas firmantes; usa un cargo genérico.
+  Marcadores:
+    {{logo}} {{firma_sello}}
+    {{lugar}} {{fecha_emision_larga}}
+    {{nombre}} {{dni}} {{empresa}} {{empresa_nif_html}}
+    {{accion_formativa}} {{contenidos_html}}
+    {{horas}} {{fecha_realizacion}}
+    {{firmante}} {{cargo}}
 -->
 <head>
 <meta charset="utf-8">
-<title>Certificado de formación en PRL (plantilla provisional)</title>
+<title>Certificado de formación</title>
 <style>
-@page{size:A4 landscape;margin:0}
+@page{size:A4 portrait;margin:0}
 html,body{margin:0;padding:0;background:#fff}
 .cert{
-  width:297mm;height:210mm;padding:8mm 10mm;
-  box-sizing:border-box;position:relative;overflow:hidden;
-  font-family:Arial,Helvetica,sans-serif;color:#1d2b36;background:#fff;
-  display:flex;flex-direction:column;
-  border:3.5mm solid #0277ab;
+  width:210mm;height:297mm;box-sizing:border-box;position:relative;
+  overflow:hidden;background:#fff;color:#000;
+  font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif;
+  font-size:10.5pt;line-height:5.18mm;
 }
-.cert::after{
-  content:"";position:absolute;inset:2mm;border:1px solid #16B14C;pointer-events:none;
+.logo{
+  position:absolute;top:12.3mm;right:12.4mm;width:58.9mm;height:auto;
 }
-.cert::before{
-  content:"PROVISIONAL";position:absolute;top:50%;left:50%;
-  transform:translate(-50%,-50%) rotate(-22deg);
-  font-size:38mm;font-weight:800;color:rgba(198,40,40,.07);
-  letter-spacing:.12em;white-space:nowrap;pointer-events:none;z-index:0;
+.cuerpo{padding:31.5mm 36mm 18mm 25.2mm}
+.fecha,.intro,.modalidad{margin:0 0 5.15mm}
+.certifico{margin:0 0 5.15mm;min-height:15.54mm}
+.accion{font-weight:700;margin:0 0 3.2mm}
+.caja{
+  border:0.35pt solid #595959;
+  box-sizing:border-box;
+  width:145.84mm;height:89.3mm;
+  margin:0 0 5.4mm 1.6mm;
+  padding:3.2mm 4mm 3mm 15.5mm;
+  overflow:hidden;
 }
-.cert>*{position:relative;z-index:1}
-.prov{
-  background:#c62828;color:#fff;text-align:center;font-weight:800;
-  font-size:8.5pt;letter-spacing:.08em;text-transform:uppercase;
-  padding:3px 8px;margin:-2mm -4mm 5mm;flex:none;
+.caja .ln{margin:0;padding:0;font-size:10pt;line-height:3.41mm}
+.legal{font-style:italic;margin:0}
+.legal .b{font-weight:700;font-style:italic}
+.firma-bloque{
+  position:absolute;left:110.2mm;top:213.6mm;width:62.6mm;text-align:center;
 }
-.head{display:flex;align-items:center;gap:14px;margin-bottom:4mm}
-.head img{height:16mm;width:auto;background:#fff;padding:2px 4px;border-radius:4px}
-.head .brand{flex:1}
-.head .brand strong{display:block;color:#0277ab;font-size:16pt;letter-spacing:.04em}
-.head .brand span{color:#5b6b78;font-size:9.5pt}
-h1{
-  margin:0 0 4mm;text-align:center;color:#0277ab;
-  font-size:18pt;font-weight:800;line-height:1.2;letter-spacing:.02em;
-  text-transform:uppercase;
-}
-.lead{text-align:center;font-size:11pt;margin:0 0 1.5mm;color:#1d2b36}
-.nombre{
-  text-align:center;font-size:20pt;font-weight:800;color:#06476b;
-  margin:0 0 1.5mm;line-height:1.15;
-}
-.datos{text-align:center;font-size:10.5pt;margin:0 0 3.5mm;color:#1d2b36}
-.datos b{color:#06476b}
-.curso-box{
-  border:1px solid #d6e2ea;background:#f3f7fa;border-radius:6px;
-  padding:3mm 5mm;margin:0 0 3mm;text-align:center;
-}
-.curso-box .c-nom{font-size:13.5pt;font-weight:800;color:#0277ab;margin:0 0 1mm}
-.curso-box .c-meta{font-size:10pt;margin:0;color:#1d2b36}
-.legal{
-  text-align:center;font-size:9pt;color:#1d2b36;margin:0 0 3mm;line-height:1.35;
-}
-h2{font-size:9.5pt;color:#0277ab;margin:0 0 1.5mm;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
-.contenidos{flex:1;min-height:0;margin:0 0 3mm}
-.contenidos ul{
-  margin:0;padding:0 0 0 4.5mm;
-  columns:2;column-gap:8mm;
-  font-size:8.5pt;line-height:1.45;
-}
-.contenidos li{break-inside:avoid;margin:0 0 0.4mm}
-.pie{
-  display:flex;justify-content:space-between;align-items:flex-end;
-  gap:12mm;margin-top:auto;padding-top:2mm;
-}
-.pie .emi{font-size:9.5pt;color:#1d2b36}
-.firma{text-align:center;min-width:70mm}
-.firma .linea{border-top:1px solid #1d2b36;margin:12mm 0 1.5mm;padding-top:1.5mm}
-.firma .cargo{font-size:9.5pt;font-weight:700}
-.firma .sello{font-size:8.5pt;color:#0277ab;font-weight:700}
+.fdo{margin:0 0 2mm;text-align:left;padding:0;font-size:10.5pt}
+.firma-bloque img{display:block;width:62.6mm;height:auto;margin:0 0 1.2mm}
+.firmante{margin:0;font-size:10pt;line-height:12pt}
 </style>
 </head>
 <body>
 <article class="cert">
-  <div class="prov">Plantilla provisional — pendiente del modelo definitivo</div>
-  <div class="head">
-    <img src="{{logo}}" alt="PREVIJOB">
-    <div class="brand">
-      <strong>PREVIJOB, S.L.</strong>
-      <span>Servicio de Prevención</span>
-    </div>
+  <img class="logo" src="{{logo}}" alt="PREVIJOB · Servicio de Prevención">
+  <div class="cuerpo">
+    <p class="fecha">{{lugar}}, a {{fecha_emision_larga}}.</p>
+    <p class="intro"><b>David Minguez Motos</b>, Técnico de Prevención de riesgos Laborales de <b>PREVIJOB SL</b> Servicio de Prevención Ajeno acreditado con el número SP-0014-T y con N.I.F. B55661755.</p>
+    <p class="certifico"><b>CERTIFICO</b> que el trabajador/a <b>Dº/Dª {{nombre}}</b> con NIF {{dni}}, perteneciente a la Empresa <b>{{empresa}}</b>{{empresa_nif_html}}, ha realizado con aprovechamiento la siguiente accion formativa:</p>
+    <p class="accion">{{accion_formativa}}</p>
+    <div class="caja">{{contenidos_html}}</div>
+    <p class="modalidad">En modalidad <b>on-line</b>, con una duración total de <b>{{horas}}</b>h. el <b>{{fecha_realizacion}}</b>.</p>
+    <p class="legal">El trabajador ha recibido <span class="b">formación e información</span>, de acuerdo con los <span class="b">art. 18 y 19 de la LPRL</span>, sobre los riesgos asociados a su puesto de trabajo y se ha comprometido a seguir las indicaciones y normas recibidas.</p>
   </div>
-  <h1>Certificado de formación en prevención de riesgos laborales</h1>
-  <p class="lead">Se certifica que</p>
-  <p class="nombre">{{nombre}}</p>
-  <p class="datos">DNI/NIE: <b>{{dni}}</b> &nbsp;·&nbsp; Empresa: <b>{{empresa}}</b></p>
-  <div class="curso-box">
-    <p class="c-nom">{{curso}}</p>
-    <p class="c-meta">Código: <b>{{codigo}}</b> &nbsp;·&nbsp; Duración: <b>{{horas}}</b><br>
-    Fecha de realización: <b>{{fecha_realizacion}}</b> &nbsp;·&nbsp; Nota del examen: <b>{{nota}}</b></p>
-  </div>
-  <p class="legal">Formación e información conforme a los arts. 18 y 19 de la Ley 31/1995 de Prevención de Riesgos Laborales.</p>
-  <div class="contenidos">
-    <h2>Contenidos</h2>
-    <ul>{{contenidos_html}}</ul>
-  </div>
-  <div class="pie">
-    <div class="emi">Expedido el {{fecha_emision}}{{lugar}}</div>
-    <div class="firma">
-      <div class="linea">
-        <div class="cargo">Técnico/a de PRL</div>
-        <div class="sello">PREVIJOB, S.L. – Servicio de Prevención</div>
-      </div>
-    </div>
+  <div class="firma-bloque">
+    <p class="fdo">Fdo:</p>
+    <img src="{{firma_sello}}" alt="Firma y sello de PREVIJOB">
+    <p class="firmante">{{firmante}}<br>{{cargo}}</p>
   </div>
 </article>
 </body>
