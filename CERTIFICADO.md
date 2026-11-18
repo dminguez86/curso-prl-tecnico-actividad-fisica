@@ -19,7 +19,7 @@ Plantilla según el modelo de David Minguez Motos (PREVIJOB, S.L.), A4 vertical,
    | `{{accion_formativa}}` | Título de la acción (p. ej. RIESGOS ESPECIFICOS DE TRABAJOS DE CATERING) |
    | `{{contenidos_html}}` | Párrafos `.ln` con el temario del certificado |
    | `{{horas}}` | Duración en horas (sin la «h.»; sale en el texto «de 1h.») |
-   | `{{fecha_realizacion}}` | Fecha en que quedó APTO (dd/mm/aaaa) |
+   | `{{fecha_realizacion}}` | Día en que se certifica, igual que la fecha de emisión (dd/mm/aaaa) |
    | `{{firmante}}` {{cargo}} | «David Minguez Motos» / «Tecnico superior PRL» |
 
 3. Si cambias la firma o el logo, sustituye `src/firma-sello.png` o `src/logo-certificado.png`.
