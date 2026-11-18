@@ -3,8 +3,11 @@
     "to": "marger2010@originalcatering.es",
     "cc": "d.minguez@previjob.com"
   },
-  "ofi": [
-    "lorena.segura@housfy.com",
-    "anna.forgas@housfy.com"
-  ]
+  "ofi": {
+    "to": [
+      "lorena.segura@housfy.com",
+      "anna.forgas@housfy.com"
+    ],
+    "enviar": false
+  }
 }

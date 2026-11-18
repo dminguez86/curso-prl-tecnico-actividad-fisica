@@ -59,8 +59,29 @@ def load_cert_cfg():
     out={}
     for k,v in j.items():
         cc=emails_of(v.get('cc') or v.get('copia') or '') if isinstance(v,dict) else []
-        out[k]={'emails':emails_of(v),'cc':cc}
+        enviar=True
+        if isinstance(v,dict) and 'enviar' in v: enviar=bool(v['enviar'])
+        out[k]={'emails':emails_of(v),'cc':cc,'enviar':enviar}
     return out
+def norm_emp(s):
+    s=unicodedata.normalize('NFKD',s or '')
+    s=''.join(c for c in s if not unicodedata.combining(c)).lower()
+    return re.sub(r'[^a-z0-9]+','',s)
+_CERT_META={}
+def course_cert(cid):
+    if cid in _CERT_META: return _CERT_META[cid]
+    try: j=json.load(open(os.path.join(DIR,'courses',cid+'-cert.json')))
+    except Exception: j={}
+    _CERT_META[cid]=j if isinstance(j,dict) else {}
+    return _CERT_META[cid]
+def lookup_empresa(cid,company):
+    emps=course_cert(cid).get('empresas') or {}
+    k=norm_emp(company)
+    if not k: return None
+    for name,v in emps.items():
+        if not isinstance(v,dict): continue
+        if norm_emp(name)==k or norm_emp(v.get('nombre'))==k: return v
+    return None
 def attach_existing(w):
     """Reutiliza los PDF ya generados en OUT_DIR (p. ej. alumno ya avisado a Previjob con envío al cliente pendiente)."""
     d=w.get('carpeta') or os.path.join(OUT,f"{w['curso']}_{w['dni']}_{w['fecha_finalizacion']}")
@@ -160,7 +181,11 @@ def out(w,cfg,known=None):
     cc=cfg.get(cid,{}).get('cc',[]) if activo else []
     pack,faltan=pack_cliente(w)
     ya=bool(w.get('cert_estado') and w['cert_estado'].get('at'))
-    pendiente=bool(activo and emails and not ya and not faltan and not w.get('error'))
+    enviar=bool(cfg.get(cid,{}).get('enviar',True)) if activo else False
+    emps=course_cert(cid).get('empresas') or {}
+    emp=lookup_empresa(cid,w.get('empresa'))
+    sin_nif=bool(emps) and not (emp and emp.get('nif'))
+    pendiente=bool(activo and emails and enviar and not ya and not faltan and not sin_nif and not w.get('error'))
     d={'id':w['id'],'nombre':w['nombre'],'dni':w['dni'],'empresa':w['empresa'],'curso':w.get('curso_nombre') or w['curso'],'curso_id':w['curso'],
        'fecha_realizacion':fdmy(w['fecha_finalizacion']),'nota':(f"{w['nota']} ({w['nota_pct']} %)" if w.get('nota') and 'None' not in str(w['nota']) else None),
        'adjuntos':w.get('adjuntos',[]),'no_disponibles':w.get('no_disponibles',[]),
@@ -171,7 +196,10 @@ def out(w,cfg,known=None):
        'cliente_pendiente':pendiente,
        'aviso_pendiente':(w['id'] not in known) if known is not None else None,
        'certificado_estado':w.get('cert_estado')}
-    if faltan and activo and not ya: d['cliente_bloqueo']='Faltan documentos para el envío al cliente: '+', '.join(faltan)+'.'
+    if activo and not ya:
+        if not enviar: d['cliente_bloqueo']='el envío al cliente de este curso está pendiente de visto bueno'
+        elif sin_nif: d['cliente_bloqueo']='empresa sin NIF'
+        elif faltan: d['cliente_bloqueo']='Faltan documentos para el envío al cliente: '+', '.join(faltan)+'.'
     if w.get('errores'): d['errores']=w['errores']
     if w.get('error'): d['error']=w['error']
     return d
@@ -208,6 +236,7 @@ def main():
         if w['curso'] not in cfg: err('el curso %s no tiene el certificado activado'%w['curso'])
         emails=cfg[w['curso']]['emails']
         if not emails: err('el curso %s no tiene correo del cliente; no se marca el envío'%w['curso'])
+        if not cfg[w['curso']].get('enviar',True): err('el envío al cliente de este curso está pendiente de visto bueno; no se marca')
         if w.get('cert_estado') and w['cert_estado'].get('at'):
             print(json.dumps({'marcado':a.marcar_cliente,'ya_estaba':True,'origen':w['cert_estado'].get('origen'),'via':'api'},ensure_ascii=False));return
         try:

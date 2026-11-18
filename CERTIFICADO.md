@@ -36,6 +36,8 @@ El temario, las horas oficiales del certificado y la equivalencia de empresa/NIF
 ## Envío al cliente y marca en el panel
 
 - Destinatarios: `certificados_destinatarios.json` (correo o lista, o `{to, cc}`). Cátering: `marger2010@originalcatering.es`, copia a `d.minguez@previjob.com`. Housfy (ofi): Lorena Segura y Anna Forgàs. El JSON incluye `cliente_email` y `cliente_cc`.
+
+- Oficinas (Housfy, `ofi`): acción «RIESGOS ESPECÍFICOS DE TRABAJOS DE OFICINA», 2 h, temario = títulos de las lecciones (`courses/ofi-cert.json`). Las 11 empresas del grupo van con su NIF; el cruce es insensible a mayúsculas y puntuación. Si la empresa del alumno no está en la tabla, `cliente_bloqueo` es `empresa sin NIF` y no se envía. El envío al cliente de Housfy queda con `enviar: false` hasta el visto bueno de David.
 - El estado «certificado enviado» vive en la API (`workers.cert_at`, `workers.cert_origen`: `manual` o `automatico`). Se ve en la columna «Certificado» del panel, con filtro, y se puede marcar o desmarcar a mano (con confirmación).
 - `--marcar-cliente <id>` lo graba en la API con origen `automatico`. Si ya está marcado (también a mano), no se vuelve a enviar.
 - El correo al cliente debe llevar **siempre 3 PDF**: certificado generado, entrega de información firmada y ofrecimiento firmado de la revisión médica. Van en `adjuntos_cliente`. Si falta alguno, `cliente_pendiente` es `false` y aparece `cliente_bloqueo` con el motivo. `aviso_pendiente` indica si aún falta el correo a Previjob.

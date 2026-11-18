@@ -1,0 +1,64 @@
+{
+  "accion_formativa": "RIESGOS ESPECÍFICOS DE TRABAJOS DE OFICINA",
+  "horas": "2",
+  "contenidos": [
+    "Introducción: tu formación, tus derechos y la evaluación de tu puesto",
+    "Ergonomía y trabajo con pantallas de visualización (PVD)",
+    "Fatiga visual, iluminación y confort térmico",
+    "Lugares de trabajo seguros",
+    "Manipulación de cargas, herramientas y equipos de oficina",
+    "Riesgo eléctrico en la oficina",
+    "Riesgos psicosociales",
+    "Acoso laboral, sexual y por razón de sexo",
+    "Seguridad vial, desplazamientos y visitas a otras instalaciones",
+    "Teletrabajo",
+    "Higiene, agentes biológicos y productos químicos",
+    "Emergencias, incendio y primeros auxilios"
+  ],
+  "empresas": {
+    "DESPATX OLIVARES, S.L.": {
+      "nombre": "DESPATX OLIVARES, S.L.",
+      "nif": "B59099556"
+    },
+    "FINQUES FELIU, S.L.": {
+      "nombre": "FINQUES FELIU, S.L.",
+      "nif": "B65856577"
+    },
+    "FINQUES MARTINEZ, S.L.": {
+      "nombre": "FINQUES MARTINEZ, S.L.",
+      "nif": "B61261145"
+    },
+    "HIBO TECH SERVICES, S.L.": {
+      "nombre": "HIBO TECH SERVICES, S.L.",
+      "nif": "B67509059"
+    },
+    "HOUSFY REAL ESTATE, S.L.": {
+      "nombre": "HOUSFY REAL ESTATE, S.L.",
+      "nif": "B66991274"
+    },
+    "HOUSFY SERVICES, S.L.": {
+      "nombre": "HOUSFY SERVICES, S.L.",
+      "nif": "B19754571"
+    },
+    "HRE GESTIO DE FINQUES SL": {
+      "nombre": "HRE GESTIO DE FINQUES SL",
+      "nif": "B56222870"
+    },
+    "HRE PM GIRONA, S.L.": {
+      "nombre": "HRE PM GIRONA, S.L.",
+      "nif": "B65783102"
+    },
+    "HRE PROPERTY MGMT IBERIA, S.L.": {
+      "nombre": "HRE PROPERTY MGMT IBERIA, S.L.",
+      "nif": "B72697204"
+    },
+    "SERRA EXPERIÈNCIA IMMOBILIÀRIA SLU": {
+      "nombre": "SERRA EXPERIÈNCIA IMMOBILIÀRIA SLU",
+      "nif": "B65695025"
+    },
+    "UNIÓ CATALANA D'ADMINISTRADORS, S.L.": {
+      "nombre": "UNIÓ CATALANA D'ADMINISTRADORS, S.L.",
+      "nif": "B60187853"
+    }
+  }
+}
