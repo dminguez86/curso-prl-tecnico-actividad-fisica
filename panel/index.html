@@ -101,7 +101,7 @@ const emp=(cfg.empresas||{})[w.company]||null,empresa=emp&&emp.nombre?emp.nombre
 const lineas=cfg.contenidos&&cfg.contenidos.length?cfg.contenidos:(META.titles||[]).map((tit,i)=>(i+1)+". "+tit);
 const data={logo:await asData("logo-certificado.png"),firma_sello:await asData("firma-sello.png"),lugar:"Tarragona",fecha_emision_larga:new Date().toLocaleDateString("es-ES",{timeZone:"Europe/Madrid",weekday:"long",day:"numeric",month:"long",year:"numeric"}),nombre:w.name||"",dni:w.dni||"",empresa,empresa_nif_html:nif?", con NIF "+esc(nif):"",accion_formativa:cfg.accionFormativa||C0.name||"",contenidos_html:lineas.map(s=>'<p class="ln">'+esc(s)+"</p>").join(""),horas:fmtHorasCert(cfg,META.tot||C0.totMin),fecha_realizacion:w.passedAt?String(w.passedAt).slice(0,10).split("-").reverse().join("/"):"—",firmante:"David Minguez Motos",cargo:"Tecnico superior PRL"};
 const el=montarCertificado(rellenarPlantilla(tpl,data));
-const canvas=await h2p().set({html2canvas:{scale:2,useCORS:true,backgroundColor:"#fff",scrollX:0,scrollY:0,letterRendering:true}}).from(el).toCanvas();
+const canvas=await h2p().set({html2canvas:{scale:2,useCORS:true,backgroundColor:"#fff",scrollX:0,scrollY:0,letterRendering:true}}).from(el).toCanvas().get("canvas");
 const Js=await loadJs(),doc=new Js({orientation:"portrait",unit:"mm",format:"a4"}),fn="Certificado-"+String(w.name||w.dni).replace(/[^\w\u00C0-\u017F]+/g,"-")+".pdf",hMm=canvas.height/canvas.width*210,imgData=canvas.toDataURL("image/jpeg",0.98);
 if(hMm<=297)doc.addImage(imgData,"JPEG",0,0,210,hMm);else doc.addImage(imgData,"JPEG",0,0,210*297/hMm,297);doc.save(fn)
 }catch(e){alert("No se pudo generar el certificado: "+e.message)}btn.disabled=false;btn.textContent=t0}
