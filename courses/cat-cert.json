@@ -35,6 +35,22 @@
     "MARGER 2010, SL": {
       "nombre": "MARGER 2010, SL",
       "nif": "B65269862"
+    },
+    "MARGER 2010 S.L.": {
+      "nombre": "MARGER 2010, SL",
+      "nif": "B65269862"
+    },
+    "MARGER 2010, S.L.": {
+      "nombre": "MARGER 2010, SL",
+      "nif": "B65269862"
+    },
+    "MARGER 2010 SL": {
+      "nombre": "MARGER 2010, SL",
+      "nif": "B65269862"
+    },
+    "MARGER 2010,SL": {
+      "nombre": "MARGER 2010, SL",
+      "nif": "B65269862"
     }
   }
 }
