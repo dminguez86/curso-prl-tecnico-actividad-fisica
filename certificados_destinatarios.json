@@ -10,5 +10,10 @@
     ],
     "enviar": true,
     "cc": "d.minguez@previjob.com"
+  },
+  "lim": {
+    "to": "laboral@ferreriabogados.com",
+    "enviar": true,
+    "cc": "d.minguez@previjob.com"
   }
 }
