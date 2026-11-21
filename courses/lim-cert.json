@@ -1,0 +1,23 @@
+{
+  "accion_formativa": "RIESGOS ESPECÍFICOS DE TRABAJOS DE LIMPIEZA",
+  "horas": "2",
+  "contenidos": [
+    "Tu puesto: normativa, evaluación de riesgos y tareas",
+    "Trabajo en centros ajenos y coordinación",
+    "Caídas, suelos y trabajo en altura",
+    "Golpes, cortes, objetos y contactos térmicos",
+    "Electricidad y equipos de limpieza",
+    "Productos químicos de limpieza",
+    "Higiene y agentes biológicos",
+    "Ergonomía: posturas, repetición y cargas",
+    "Organización del trabajo y riesgos psicosociales",
+    "Desplazamientos entre centros",
+    "Protección personal, salud y emergencias"
+  ],
+  "empresas": {
+    "CLUMTEL PREMIUM, SL": {
+      "nombre": "CLUMTEL PREMIUM, SL",
+      "nif": "B44592772"
+    }
+  }
+}

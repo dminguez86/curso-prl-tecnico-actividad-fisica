@@ -36,7 +36,8 @@ const COURSES = {
   hbd: mkCourse("hbd", "Higienista bucodental", "PRL-HBD", require("./courses/hbd-meta.json"), "https://curso-prl-higienista-bucodental.onrender.com"),
   bar: mkCourse("bar", "Barista", "PRL-BAR", require("./courses/bar-meta.json"), "https://curso-prl-barista.onrender.com"),
   fis: Object.assign(mkCourse("fis", "Fisioterapeuta", "PRL-FIS", require("./courses/fis-meta.json"), "https://curso-prl-fisioterapeuta.onrender.com"), { needSign: true, puesto: "Fisioterapeuta" }),
-  cat: Object.assign(mkCourse("cat", "Personal de cátering", "PRL-CAT", require("./courses/cat-meta.json"), "https://curso-prl-catering.onrender.com"), { needSign: true, puesto: "Personal de cátering" })
+  cat: Object.assign(mkCourse("cat", "Personal de cátering", "PRL-CAT", require("./courses/cat-meta.json"), "https://curso-prl-catering.onrender.com"), { needSign: true, puesto: "Personal de cátering" }),
+  lim: Object.assign(mkCourse("lim", "Personal de limpieza", "PRL-LIM", require("./courses/lim-meta.json"), "https://curso-prl-personal-limpieza.onrender.com"), { needSign: true, puesto: "Personal de limpieza", empresaFija: "CLUMTEL PREMIUM, SL" })
 };
 // Las webs de cada curso siempre son orígenes permitidos (además de ALLOWED_ORIGINS)
 for (const c of Object.values(COURSES)) if (c.origin && !ORIGINS.includes(c.origin)) ORIGINS.push(c.origin);
@@ -267,7 +268,9 @@ app.get("/api/health", wrap(async (req, res) => { await pool.query("SELECT 1"); 
 
 app.post("/api/register", registerLimiter, wrap(async (req, res) => {
   const b = req.body || {};
-  const name = clean(b.name, 80), dni = normDni(b.dni), company = clean(b.company, 80), email = clean(b.email, 100).toLowerCase();
+  const name = clean(b.name, 80), dni = normDni(b.dni), email = clean(b.email, 100).toLowerCase();
+  const C = COURSES[reqCourse(req)];
+  const company = C.empresaFija || clean(b.company, 80);
   const bad = [];
   if (name.length < 5 || !name.includes(" ")) bad.push("nombre y apellidos");
   if (!validDni(dni)) bad.push("DNI/NIE válido");
@@ -276,7 +279,6 @@ app.post("/api/register", registerLimiter, wrap(async (req, res) => {
   if (!validPin(b.pin)) bad.push("PIN o contraseña (4 a 40 caracteres)");
   if (b.consent !== true) bad.push("aceptar la información de protección de datos");
   if (bad.length) return res.status(400).json({ error: "Revisa: " + bad.join(", ") + "." });
-  const C = COURSES[reqCourse(req)];
   const hash = await bcrypt.hash(b.pin, 10);
   const r = await pool.query(`INSERT INTO workers(course,dni,name,company,email,pin_hash,consent_at,last_login) VALUES($1,$2,$3,$4,$5,$6,now(),now()) ON CONFLICT(course,dni) DO NOTHING RETURNING *`, [C.id, dni, name, company, email, hash]);
   if (!r.rows[0]) return res.status(409).json({ error: "Ya existe una persona dada de alta con este DNI/NIE. Usa «Acceder»." });
