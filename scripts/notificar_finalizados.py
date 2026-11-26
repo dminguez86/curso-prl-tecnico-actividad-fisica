@@ -9,7 +9,7 @@ API=os.environ.get('API','https://curso-prl-taf-api.onrender.com').rstrip('/')
 STATE=os.path.join(DIR,'finalizados_correo.json')
 CERT_CFG=os.path.join(DIR,'certificados_destinatarios.json')
 OUT=os.environ.get('OUT_DIR','/workspace/finalizados')
-SIGN_FALLBACK={'ofi','fis','cat','lim'}
+SIGN_FALLBACK={'ofi','fis','cat','lim','ofg'}
 def err(m,c=1): print(json.dumps({'error':m},ensure_ascii=False),file=sys.stderr);sys.exit(c)
 def req(path,data=None,tok=None,timeout=40,course=None,method=None):
     h={'Content-Type':'application/json'}

@@ -37,7 +37,8 @@ const COURSES = {
   bar: mkCourse("bar", "Barista", "PRL-BAR", require("./courses/bar-meta.json"), "https://curso-prl-barista.onrender.com"),
   fis: Object.assign(mkCourse("fis", "Fisioterapeuta", "PRL-FIS", require("./courses/fis-meta.json"), "https://curso-prl-fisioterapeuta.onrender.com"), { needSign: true, puesto: "Fisioterapeuta" }),
   cat: Object.assign(mkCourse("cat", "Personal de cátering", "PRL-CAT", require("./courses/cat-meta.json"), "https://curso-prl-catering.onrender.com"), { needSign: true, puesto: "Personal de cátering" }),
-  lim: Object.assign(mkCourse("lim", "Personal de limpieza", "PRL-LIM", require("./courses/lim-meta.json"), "https://curso-prl-personal-limpieza.onrender.com"), { needSign: true, puesto: "Personal de limpieza", empresaFija: "CLUMTEL PREMIUM, SL" })
+  lim: Object.assign(mkCourse("lim", "Personal de limpieza", "PRL-LIM", require("./courses/lim-meta.json"), "https://curso-prl-personal-limpieza.onrender.com"), { needSign: true, puesto: "Personal de limpieza", empresaFija: "CLUMTEL PREMIUM, SL" }),
+  ofg: Object.assign(mkCourse("ofg", "Personal de oficinas (genérico)", "PRL-OFG", require("./courses/ofg-meta.json"), "https://curso-prl-personal-oficinas.onrender.com"), { needSign: true, puesto: "Personal de oficinas" })
 };
 // Las webs de cada curso siempre son orígenes permitidos (además de ALLOWED_ORIGINS)
 for (const c of Object.values(COURSES)) if (c.origin && !ORIGINS.includes(c.origin)) ORIGINS.push(c.origin);
@@ -422,7 +423,7 @@ app.get("/api/admin/workers/:dni/firma", needAdmin, wrap(async (req, res) => {
   res.json({ course: C.id, courseName: C.name, courseCode: C.code, puesto: C.puesto || null, name: x.name, dni: x.dni, company: x.company, medical: x.medical, centro: x.centro, localidad: x.localidad, signature: x.signature, signedAt: x.signed_at, ip: x.ip });
 }));
 // Trabajadores que han terminado el curso (examen final aprobado)
-// ?course=taf (por defecto, igual que antes) · ?course=ofi · ?course=hbd · ?course=bar · ?course=fis · ?course=cat · ?course=all (todos; id = «curso:DNI» salvo en taf, que mantiene el DNI)
+// ?course=taf (por defecto, igual que antes) · ?course=ofi · ?course=hbd · ?course=bar · ?course=fis · ?course=cat · ?course=lim · ?course=ofg · ?course=all (todos; id = «curso:DNI» salvo en taf, que mantiene el DNI)
 app.get("/api/admin/finalizados", needAdmin, wrap(async (req, res) => {
   const all = req.query.course === "all", C = COURSES[reqCourse(req)];
   const r = await pool.query(`SELECT w.course,w.dni,w.name,w.company,p.exam_ok,p.exam_n,to_char(p.passed_at,'YYYY-MM-DD') passed_at,w.cert_at,w.cert_origen
