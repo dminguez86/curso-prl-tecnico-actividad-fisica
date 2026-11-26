@@ -38,7 +38,7 @@ const COURSES = {
   fis: Object.assign(mkCourse("fis", "Fisioterapeuta", "PRL-FIS", require("./courses/fis-meta.json"), "https://curso-prl-fisioterapeuta.onrender.com"), { needSign: true, puesto: "Fisioterapeuta" }),
   cat: Object.assign(mkCourse("cat", "Personal de cátering", "PRL-CAT", require("./courses/cat-meta.json"), "https://curso-prl-catering.onrender.com"), { needSign: true, puesto: "Personal de cátering" }),
   lim: Object.assign(mkCourse("lim", "Personal de limpieza", "PRL-LIM", require("./courses/lim-meta.json"), "https://curso-prl-personal-limpieza.onrender.com"), { needSign: true, puesto: "Personal de limpieza", empresaFija: "CLUMTEL PREMIUM, SL" }),
-  ofg: Object.assign(mkCourse("ofg", "Personal de oficinas (genérico)", "PRL-OFG", require("./courses/ofg-meta.json"), "https://curso-prl-personal-oficinas.onrender.com"), { needSign: true, puesto: "Personal de oficinas" })
+  ofg: Object.assign(mkCourse("ofg", "Personal de oficinas", "PRL-OFG", require("./courses/ofg-meta.json"), "https://curso-prl-personal-oficinas.onrender.com"), { needSign: true, puesto: "Personal de oficinas" })
 };
 // Las webs de cada curso siempre son orígenes permitidos (además de ALLOWED_ORIGINS)
 for (const c of Object.values(COURSES)) if (c.origin && !ORIGINS.includes(c.origin)) ORIGINS.push(c.origin);
