@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Finalizados de TODOS los cursos (taf, ofi, hbd, bar, fis, cat, lim, ofg y futuros) pendientes de avisar por correo.
+# Finalizados de TODOS los cursos (taf, ofi, hbd, bar, fis, cat, lim, ofg, mus y futuros) pendientes de avisar por correo.
 # Genera en /workspace/finalizados/<curso>_<dni>_<fecha>/ los PDF con el mismo generador del panel único
 # (Informe_curso_<Nombre>.pdf y, si el curso tiene firma y el alumno firmó, Entrega_informacion_<Nombre>.pdf y Revision_medica_<Nombre>.pdf).
 # Si el curso está en certificados_destinatarios.json y el alumno es APTO, genera también certificado.pdf
